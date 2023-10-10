@@ -1,0 +1,10 @@
+AllCops:
+  NewCops: enable
+Metrics/BlockLength:
+  Max: 60
+Style/Documentation:
+  Enabled: false
+require:
+  - rubocop-capybara
+  - rubocop-rails
+  - rubocop-rspec
