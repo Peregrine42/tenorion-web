@@ -1,0 +1,12 @@
+<div class="vstack gap-3">
+  <%= render "sign_in_flash" %>
+  <div class="container bg-light border rounded p-3 col-md-4">
+    <h1>Sign in</h1>
+    <%= simple_form_for @user, :url => sign_in_path do |f| %>
+      <%= f.input :username, autofocus: true %>
+      <%= f.input :password %>
+      <%= f.button :submit, value: "Sign in", class: "btn-primary" %>
+    <% end %>
+  </div>
+  <div></div>
+</div>

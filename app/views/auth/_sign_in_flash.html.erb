@@ -1,0 +1,9 @@
+<% flash.each do |type, msg| %>
+  <div></div>
+  <div class="<%= bootstrap_class_for_flash(type) %> rounded mx-auto p-3 col-4">
+    <%= msg %>
+  </div>
+<% end %>
+<% if flash.empty? %>
+  <div></div>
+<% end %>

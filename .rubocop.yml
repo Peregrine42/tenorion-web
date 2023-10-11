@@ -1,9 +1,13 @@
 AllCops:
   NewCops: enable
 Metrics/BlockLength:
-  Max: 60
+  Max: 600
 Style/Documentation:
   Enabled: false
+Metrics/MethodLength:
+  Max: 20
+Metrics/LineLength:
+  Max: 140
 require:
   - rubocop-capybara
   - rubocop-rails

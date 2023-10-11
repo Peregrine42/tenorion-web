@@ -43,6 +43,12 @@ gem 'tzinfo-data', platforms: %i[windows jruby]
 # Reduces boot times through caching; required in config/boot.rb
 gem 'bootsnap', require: false
 
+# CSS
+gem 'bootstrap'
+
+# Form helpers
+gem 'simple_form'
+
 # Use Active Storage variants [https://guides.rubyonrails.org/active_storage_overview.html#transforming-images]
 # gem "image_processing", "~> 1.2"
 
@@ -72,10 +78,16 @@ group :development do
 
   # VSCode Ruby-LSP Extension support
   gem 'ruby-lsp'
+
+  # VSCode ERB formatter
+  gem 'htmlbeautifier'
 end
 
 group :test do
   # Use system testing [https://guides.rubyonrails.org/testing.html#system-testing]
   gem 'capybara'
+  gem 'database_cleaner-active_record'
   gem 'selenium-webdriver'
 end
+
+gem 'bcrypt', '~> 3.1'
