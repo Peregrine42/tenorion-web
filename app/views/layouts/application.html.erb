@@ -7,12 +7,13 @@
     <%= csp_meta_tag %>
     <%= stylesheet_link_tag "application", "data-turbo-track": "reload" %>
     <%= javascript_importmap_tags %>
+    <%= javascript_include_tag "application", "data-turbo-track": "reload", defer: true %>
   </head>
-  <body>
-    <div class="container">
+  <body class="full-height d-flex align-items-stretch flex-column">
+    <div class="container d-flex flex-column align-items-stretch full-height">
       <%= yield %>
-      <div class="footer text-center">
-        © 2023 Duncan Fermor
+      <div class="footer d-flex align-items-center justify-content-center">
+        <div>© 2023 Duncan Fermor</div>
       </div>
     </div>
   </body>

@@ -15,3 +15,27 @@
  */
 
 @import "bootstrap";
+
+.full-height {
+  min-height: 100dvh;
+  flex: 1;
+  background-color: rgb(234, 234, 234);
+  overflow-y: hidden
+}
+
+.border-cell {
+  max-width: 10px;
+  max-height: 10px;
+}
+
+.stage {
+  border-radius: 10px;
+  background-color: rgb(244, 244, 244);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.drop-shadow {
+  box-shadow: 2px 2px 3px 1px #cfcfcf;
+}

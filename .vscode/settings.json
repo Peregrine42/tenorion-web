@@ -1,11 +1,11 @@
 {
-    "[erb]": {
-        "editor.defaultFormatter": "aliariff.vscode-erb-beautify",
-        "editor.formatOnSave": true
-    },
-    "files.associations": {
-        "*.html.erb": "erb"
-    },
-    "vscode-erb-beautify.useBundler": true,
-    "vscode-run-rspec-file.custom-command": "bundle exec rspec --color"
+  "[erb]": {
+    "editor.formatOnSave": false,
+  },
+  "files.associations": {
+    "*.html.erb": "erb"
+  },
+  "emmet.includeLanguages": {
+    "erb": "html"
+  },
 }

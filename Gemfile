@@ -91,3 +91,7 @@ group :test do
 end
 
 gem 'bcrypt', '~> 3.1'
+
+gem 'jsbundling-rails', '~> 1.2'
+
+gem "view_component", "~> 3.6"
