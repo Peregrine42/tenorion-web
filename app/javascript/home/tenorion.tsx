@@ -1,12 +1,35 @@
-import React, { useEffect, useState, JSX } from "react";
+import React, { useEffect, useState, JSX, useRef } from "react";
 import { ResizeObserver } from "@juggle/resize-observer";
 import useMeasure from "react-use-measure";
 import _ from "lodash";
+import Soundfont from "soundfont-player";
 
 type Grid = { active: boolean; x: number; y: number; w: number; h: number }[][];
 
 function hasTouch() {
   return "ontouchstart" in window || navigator.maxTouchPoints > 0;
+}
+
+const notes = [
+  "C4",
+  "D4",
+  "E4",
+  "G4",
+  "A4",
+  "C5",
+  "D5",
+  "E5",
+  "G5",
+  "A5",
+  "C6",
+  "D6",
+  "E6",
+  "G6",
+  "A6",
+  "C7",
+];
+function lookupNote(j) {
+  return notes[15 - j];
 }
 
 const updateGrid = (existingGrid: Grid, width: number, height: number) => {
@@ -32,31 +55,28 @@ const updateGrid = (existingGrid: Grid, width: number, height: number) => {
   return grid;
 };
 
-function hintActive(r: number, g: number, b: number, active: boolean) {
-  if (active) {
-    r -= 80;
-    g -= 80;
-    b -= 80;
+function hintPlaying(r: number, g: number, b: number, playing: boolean) {
+  if (playing) {
+    r += 0;
+    g += 10;
+    b += 30;
   }
   return `rgb(${r},${g},${b})`;
 }
 
-function colorFrom(i: number, j: number, active: boolean) {
-  if (i % 4 === 0) return hintActive(206, 161, 252, active);
-  return hintActive(217, 196, 237, active);
+function colorFrom(i: number, j: number, playing: boolean) {
+  if (i % 4 === 0) return hintPlaying(206, 161, 252, playing);
+  return hintPlaying(217, 196, 237, playing);
 }
 
 function getCellCoords(grid: Grid, e: React.TouchEvent<SVGSVGElement>) {
   const parent = (e.target as HTMLElement).parentElement?.parentElement;
-  console.log(parent);
   if (!parent) return {};
   const bb = parent.getBoundingClientRect();
   const { x, y } = bb;
 
   let offsetX = e.changedTouches[0].clientX - x;
   let offsetY = e.changedTouches[0].clientY - y;
-
-  console.log(offsetX);
 
   for (let i = 0; i < 16; i += 1) {
     for (let j = 0; j < 16; j += 1) {
@@ -65,7 +85,6 @@ function getCellCoords(grid: Grid, e: React.TouchEvent<SVGSVGElement>) {
       const x = grid[i][j].x;
       const y = grid[i][j].y;
       if (offsetX > x && offsetX < x + w && offsetY > y && offsetY < y + h) {
-        console.log({ x, y, i, j });
         return {
           i,
           j,
@@ -139,7 +158,7 @@ const TenorionCell = ({
         opacity="0"
         className="cell"
         rx={width * 0.005}
-        fill={colorFrom(i, j, false)}
+        fill={colorFrom(i, j, playing)}
         x={x + 0.02 * (width / 16)}
         y={y + 0.02 * (height / 16)}
         width={w * 0.94}
@@ -170,7 +189,45 @@ const Tenorion = ({}: {}) => {
   const [dragActivating, setDragActivating] = useState(false);
   const [grid, setGrid] = useState<Grid>([]);
   const [ref, bounds] = useMeasure({ polyfill: ResizeObserver });
-  const [cursor, setCursor] = useState(0);
+  const [cursor, setCursor] = useState(-1);
+  const [lastCursor, setLastCursor] = useState(-1);
+  const [tempo, setTempo] = useState(108);
+  const [cued, setCued] = useState(false);
+  const [intervalId, setIntervalId] = useState<number | undefined>();
+
+  const marimba = useRef<any>();
+
+  useEffect(() => {
+    if (cued) {
+      const id = setInterval(() => {
+        setCursor((v) => {
+          if (v < 15) {
+            v = v + 1;
+          } else {
+            v = 0;
+          }
+
+          return v;
+        });
+      }, (60 * 1000) / (tempo * 4));
+      setIntervalId(id);
+      return () => {
+        clearInterval(id);
+      };
+    } else {
+      if (intervalId !== undefined) clearInterval(intervalId);
+    }
+  }, [cued, tempo, setCursor]);
+
+  useEffect(() => {
+    if (cursor > -1 && lastCursor !== cursor) {
+      setLastCursor(cursor);
+      for (let j = 0; j < 16; j += 1) {
+        const cell = grid[cursor][j];
+        if (cell.active) marimba.current?.play(lookupNote(j));
+      }
+    }
+  }, [grid, cursor, lastCursor]);
 
   useEffect(() => {
     if (bounds.width > 0 && bounds.height > 0) {
@@ -245,6 +302,26 @@ const Tenorion = ({}: {}) => {
   const cells = getCells(grid);
   return (
     <div className="flex-shrink-0 flex-grow-1 d-flex align-items-spread flex-column">
+      <input
+        value={tempo}
+        min={40}
+        max={160}
+        onChange={(e) => setTempo(parseInt(e.target.value))}
+        type="range"
+      ></input>
+      <input
+        onClick={async () => {
+          if (!marimba.current)
+            marimba.current = await Soundfont.instrument(
+              new AudioContext(),
+              "marimba"
+            );
+          if (cued) setCursor(-1);
+          setCued(!cued);
+        }}
+        value={cued ? "⏸" : "⏵"}
+        type="button"
+      ></input>
       <div className="border-cell d-flex flex-shrink-1 flex-grow-1 align-items-spread"></div>
       <div className="d-flex flex-shrink-1 flex-grow-1 align-items-spread">
         <div className="border-cell flex-shrink-1 flex-grow-1"></div>
