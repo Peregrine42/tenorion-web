@@ -77,6 +77,7 @@ function getCellCoords(grid: Grid, e: React.TouchEvent<SVGSVGElement>) {
 }
 
 const TenorionCell = ({
+  playing,
   i,
   j,
   width,
@@ -92,6 +93,7 @@ const TenorionCell = ({
   w,
   h,
 }: {
+  playing: boolean;
   i: number;
   j: number;
   width: number;
@@ -107,26 +109,55 @@ const TenorionCell = ({
   w: number;
   h: number;
 }) => {
+  const [firstActive, setFirstActive] = useState(false);
+
+  useEffect(() => {
+    if (!firstActive && active) setFirstActive(true);
+  }, [active, firstActive]);
+
+  const entryDelay = i * j * 0.002;
+
   return (
     <g
-      onMouseDown={() => {
+      onMouseDown={(e) => {
         if (hasTouch()) return;
+        e.preventDefault();
         onDown(!active);
         setActive(!active);
       }}
-      onMouseOver={() => {
+      onMouseOver={(e) => {
+        !hasTouch() && e.preventDefault();
         !hasTouch() && dragging && setActive(actionDirection);
       }}
       onMouseUp={() => !hasTouch() && onUp()}
     >
       <rect
+        style={{
+          animation: "0.4s opacity forwards",
+          animationDelay: `${entryDelay}s`,
+        }}
+        opacity="0"
         className="cell"
         rx={width * 0.005}
-        fill={colorFrom(i, j, active)}
+        fill={colorFrom(i, j, false)}
         x={x + 0.02 * (width / 16)}
         y={y + 0.02 * (height / 16)}
         width={w * 0.94}
         height={h * 0.94}
+      />
+      <rect
+        x={x + 0.02 * (width / 16)}
+        y={y + 0.02 * (height / 16)}
+        width={w * 0.94}
+        height={h * 0.94}
+        style={{
+          animation: active
+            ? "0.3s some-opacity forwards"
+            : "0.2s no-opacity forwards",
+          fill: firstActive ? "black" : "white",
+          opacity: 0.4,
+          pointerEvents: "none",
+        }}
       />
     </g>
   );
@@ -139,6 +170,7 @@ const Tenorion = ({}: {}) => {
   const [dragActivating, setDragActivating] = useState(false);
   const [grid, setGrid] = useState<Grid>([]);
   const [ref, bounds] = useMeasure({ polyfill: ResizeObserver });
+  const [cursor, setCursor] = useState(0);
 
   useEffect(() => {
     if (bounds.width > 0 && bounds.height > 0) {
@@ -179,6 +211,7 @@ const Tenorion = ({}: {}) => {
         for (let j = 0; j < 16; j += 1) {
           current.push(
             <TenorionCell
+              playing={cursor === i}
               key={`${i}-${j}`}
               i={i}
               j={j}
@@ -246,6 +279,24 @@ const Tenorion = ({}: {}) => {
               setDragging(false);
             }}
           >
+            <style>
+              {`
+                @keyframes opacity {
+                  0% {opacity: 0} 
+                  100% {opacity: 1}
+                }
+
+                @keyframes some-opacity {
+                  0% {opacity: 0} 
+                  100% {opacity: 0.4}
+                }
+
+                @keyframes no-opacity {
+                  0% {opacity: 0.4} 
+                  100% {opacity: 0}
+                }
+              `}
+            </style>
             <g>
               <rect
                 rx={width * 0.005}
