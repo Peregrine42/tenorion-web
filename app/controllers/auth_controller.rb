@@ -19,6 +19,11 @@ class AuthController < ApplicationController
     render :sign_in, status: :unprocessable_entity
   end
 
+  def sign_out
+    session[:user_id] = nil
+    redirect_to root_path, status: :found
+  end
+
   private
 
   def user_params

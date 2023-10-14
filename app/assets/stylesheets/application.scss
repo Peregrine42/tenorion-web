@@ -15,13 +15,14 @@
  */
 
 @import "bootstrap";
+@import "font-awesome";
 
 .full-height {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   min-height: 100dvh;
   flex: 1;
   background-color: rgb(234, 234, 234);
-  overflow-y: hidden
+  overflow-y: hidden;
 }
 
 .border-cell {
@@ -39,4 +40,18 @@
 
 .drop-shadow {
   box-shadow: 2px 2px 3px 1px #cfcfcf;
+}
+
+.play-button {
+  min-width: 50px;
+  min-height: 50px;
+
+  max-width: 50px;
+  max-height: 50px;
+}
+
+.reset-tempo-button {
+  min-width: 100px;
+
+  max-width: 100px;
 }

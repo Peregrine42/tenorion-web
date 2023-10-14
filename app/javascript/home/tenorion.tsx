@@ -32,7 +32,12 @@ function lookupNote(j) {
   return notes[15 - j];
 }
 
-const updateGrid = (existingGrid: Grid, width: number, height: number) => {
+const updateGrid = (
+  existingGrid: Grid,
+  width: number,
+  height: number,
+  clear = false
+) => {
   const grid: Grid = [];
   for (let i = 0; i < 16; i += 1) {
     grid.push([]);
@@ -47,7 +52,7 @@ const updateGrid = (existingGrid: Grid, width: number, height: number) => {
         y,
         w,
         h,
-        active,
+        active: clear ? false : active,
       });
     }
   }
@@ -301,31 +306,64 @@ const Tenorion = ({}: {}) => {
 
   const cells = getCells(grid);
   return (
-    <div className="flex-shrink-0 flex-grow-1 d-flex align-items-spread flex-column">
-      <input
-        value={tempo}
-        min={40}
-        max={160}
-        onChange={(e) => setTempo(parseInt(e.target.value))}
-        type="range"
-      ></input>
-      <input
-        onClick={async () => {
-          if (!marimba.current)
-            marimba.current = await Soundfont.instrument(
-              new AudioContext(),
-              "marimba"
-            );
-          if (cued) setCursor(-1);
-          setCued(!cued);
-        }}
-        value={cued ? "⏸" : "⏵"}
-        type="button"
-      ></input>
+    <div className="flex-shrink-0 flex-grow-1 d-flex justify-content-between align-items-spread flex-column">
+      <div className="d-flex align-items-center justify-content-between">
+        <div className="w-100 p-1 flex-grow-1 btn border d-flex">
+          <input
+          className="flex-grow-1 "
+            value={tempo}
+            min={40}
+            max={160}
+            onChange={(e) => setTempo(parseInt(e.target.value))}
+            type="range"
+          ></input>
+          <button
+            onClick={() => {
+              setTempo(108);
+            }}
+            className="flex-shrink-1 reset-tempo-button btn mx-3"
+          >
+            <i className="fa-xl align-middle fa-solid fa-clock"></i>
+            &nbsp; {tempo}
+          </button>
+        </div>
+
+        <div className="w-100 flex-shrink-1 align-middle d-flex flex-column align-items-center">
+          <button
+            className={`btn play-button btn-success rounded-circle`}
+            onClick={async () => {
+              if (!marimba.current)
+                marimba.current = await Soundfont.instrument(
+                  new AudioContext(),
+                  "marimba"
+                );
+              if (cued) setCursor(-1);
+              setCued(!cued);
+            }}
+            aria-label={`${cued ? "pause" : "play"} button`}
+          >
+            <i
+              className={`fa-xl align-middle fa-solid fa-${
+                cued ? "pause" : "play"
+              }`}
+            ></i>
+          </button>
+        </div>
+        <div className="w-100 flex-grow-1 d-flex flex-column align-items-end">
+          <button
+            className="text-right btn btn-danger"
+            onClick={() => {
+              setGrid(updateGrid(grid, width, height, true));
+            }}
+          >
+            <i className="fa-xl align-middle fa-solid fa-trash"></i>
+          </button>
+        </div>
+      </div>
       <div className="border-cell d-flex flex-shrink-1 flex-grow-1 align-items-spread"></div>
       <div className="d-flex flex-shrink-1 flex-grow-1 align-items-spread">
         <div className="border-cell flex-shrink-1 flex-grow-1"></div>
-        <div ref={ref} className="stage flex-shrink-1 flex-grow-1">
+        <div ref={ref} className="w-100 stage flex-shrink-1 flex-grow-1">
           <svg
             width={width}
             height={height}

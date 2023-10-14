@@ -116,6 +116,8 @@ GEM
     erubi (1.12.0)
     execjs (2.9.1)
     ffi (1.16.3)
+    font-awesome-sass (6.4.2)
+      sassc (~> 2.0)
     globalid (1.2.1)
       activesupport (>= 6.1)
     htmlbeautifier (1.4.2)
@@ -334,6 +336,7 @@ DEPENDENCIES
   capybara
   database_cleaner-active_record
   debug
+  font-awesome-sass (~> 6.4)
   htmlbeautifier
   importmap-rails
   jbuilder
