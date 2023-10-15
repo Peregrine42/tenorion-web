@@ -4,6 +4,10 @@ import useMeasure from "react-use-measure";
 import _ from "lodash";
 import { DrumMachine, Soundfont } from "smplr";
 
+const basePitchesCount = 16;
+const baseBeatsCount = 16;
+const basePartsPerBeat = baseBeatsCount / 4;
+
 const noop: () => void = () => {};
 
 type Grid = { active: boolean; x: number; y: number; w: number; h: number }[][];
@@ -70,9 +74,9 @@ const scalePitches = (
     limit,
   }: { limit: number; startPitch: string; startOctave: number }
 ): Pitch[] =>
-  Array.from(
-    take(scaleGenerator(scaleName, startOctave, startPitch), limit)
-  ).map(setupPitch(instrumentIndex)).reverse();
+  Array.from(take(scaleGenerator(scaleName, startOctave, startPitch), limit))
+    .map(setupPitch(instrumentIndex))
+    .reverse();
 
 const drumkitTR808Pitches = (instrumentIndex: number): Pitch[] => [
   {
@@ -102,9 +106,9 @@ const drumkitTR808Pitches = (instrumentIndex: number): Pitch[] => [
   },
 ];
 
-const marimba = 2;
-const strings = 1;
 const drumkitTr808 = 0;
+const strings = 1;
+const marimba = 2;
 
 const pitches: Pitch[] = [
   ...scalePitches(marimba, "pentatonic", {
@@ -142,8 +146,8 @@ const getNewGrid = async (
   clear = false,
   isStarter = false
 ): Promise<Grid> => {
-  const pitchesCount = 16;
-  const beatsCount = 16;
+  const pitchesCount = basePitchesCount;
+  const beatsCount = baseBeatsCount;
 
   const grid: Grid = [];
   await forRange(0, beatsCount, async () => {
@@ -210,8 +214,11 @@ const getCellCoordsFromTouchEvent = async (
   grid: Grid,
   e: React.TouchEvent<SVGSVGElement>
 ): Promise<CellCoord> => {
-  const pitchesCount = 16;
-  const beatsCount = 16;
+  const pitchesCount = grid.length;
+  const beatsCount = grid[0]?.length || 0;
+  if (beatsCount === 0 || pitchesCount === 0) {
+    throw new Error("Uninitialized grid!");
+  }
 
   const parent = (e.target as HTMLElement).parentElement?.parentElement;
   if (!parent) return null;
@@ -221,17 +228,17 @@ const getCellCoordsFromTouchEvent = async (
   let offsetX = e.changedTouches[0].clientX - x;
   let offsetY = e.changedTouches[0].clientY - y;
 
-  let target: { i: number; j: number } | null = null;
-  await forRange(0, pitchesCount, async (i) => {
-    for (let j = 0; j < 16; j += 1) {
-      const w = grid[i][j].w;
-      const h = grid[i][j].h;
-      const x = grid[i][j].x;
-      const y = grid[i][j].y;
+  let target: { row: number; column: number } | null = null;
+  await forRange(0, pitchesCount, async (row) => {
+    await forRange(0, beatsCount, async (column) => {
+      const w = grid[row][column].w;
+      const h = grid[row][column].h;
+      const x = grid[row][column].x;
+      const y = grid[row][column].y;
       if (pointWithinCell(w, h, x, y, offsetX, offsetY)) {
-        target = { i, j };
+        target = { row, column };
       }
-    }
+    });
   });
   return target;
 };
@@ -350,6 +357,17 @@ const getDuration = (
   return totalLength;
 };
 
+const stopAllNotesImmediately = async (grid: Grid) => {
+  const column = grid[0];
+  if (column) {
+    column.forEach((_, j) => {
+      const p = lookupPitch(j);
+      p.current(0);
+      p.playing = 0;
+    });
+  }
+};
+
 const Tenorion = ({}: {}) => {
   const [width, setWidth] = useState(0);
   const [height, setHeight] = useState(0);
@@ -367,35 +385,38 @@ const Tenorion = ({}: {}) => {
   const strings = useRef<any>();
   const marimba = useRef<any>();
 
-  useEffect(() => {
-    if (cued) {
-      const id = setInterval(() => {
-        setCursor((v) => {
-          if (v < 15) {
-            v = v + 1;
-          } else {
-            v = 0;
-          }
+  const cueStart = async () => {
+    await stopAllNotesImmediately(grid);
+    const id = setInterval(() => {
+      setCursor((v) => {
+        if (v < 15) {
+          v = v + 1;
+        } else {
+          v = 0;
+        }
 
-          return v;
-        });
-      }, (60 * 1000) / (tempo * 4));
-      setIntervalId(id);
-      return () => {
-        clearInterval(id);
-      };
-    } else {
-      const col = grid[0];
-      console.log(col);
-      if (col) {
-        col.forEach((_, j) => {
-          const p = lookupPitch(j);
-          p.current(0);
-          p.playing = 0;
-        });
+        return v;
+      });
+    }, (60 * 1000) / (tempo * basePartsPerBeat));
+    setIntervalId(id);
+  };
+
+  const cueStop = async () => {
+    if (intervalId !== undefined) clearInterval(intervalId);
+  };
+
+  useEffect(() => {
+    (async () => {
+      if (cued) {
+        if (intervalId === undefined) {
+          await cueStart();
+        }
+      } else {
+        await stopAllNotesImmediately(grid);
+        await cueStop();
+        setIntervalId(undefined);
       }
-      if (intervalId !== undefined) clearInterval(intervalId);
-    }
+    })();
   }, [
     cued,
     tempo,
@@ -404,6 +425,13 @@ const Tenorion = ({}: {}) => {
     drumkit.current,
     strings.current,
   ]);
+
+  useEffect(() => {
+    (async () => {
+      await cueStop();
+      if (cued) await cueStart();
+    })();
+  }, [tempo]);
 
   useEffect(() => {
     if (cursor > -1 && lastCursor !== cursor) {
@@ -463,8 +491,6 @@ const Tenorion = ({}: {}) => {
       }
     })();
   }, [bounds, setWidth, setHeight]);
-
-  useEffect(() => {}, []);
 
   const getActive = (i: number, j: number) => {
     return grid[i][j].active;
@@ -526,7 +552,9 @@ const Tenorion = ({}: {}) => {
             value={tempo}
             min={40}
             max={180}
-            onChange={(e) => setTempo(parseInt(e.target.value))}
+            onChange={(e) => {
+              setTempo(parseInt(e.target.value));
+            }}
             type="range"
           ></input>
           <button
