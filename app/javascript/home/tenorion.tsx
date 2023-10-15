@@ -3,140 +3,19 @@ import { ResizeObserver } from "@juggle/resize-observer";
 import useMeasure from "react-use-measure";
 import _ from "lodash";
 import { DrumMachine, Soundfont } from "smplr";
+import { forRange } from "./utils";
+import { Pitch, drumkitTr808, lookupPitch, marimba, strings } from "./pitch";
+import { starterPattern } from "./starterPattern";
 
 const basePitchesCount = 16;
 const baseBeatsCount = 16;
-const basePartsPerBeat = baseBeatsCount / 4;
-
-const noop: () => void = () => {};
+const basePartsPerBeat = 0.25;
 
 type Grid = { active: boolean; x: number; y: number; w: number; h: number }[][];
-type Pitch = {
-  value: string;
-  instrument: number;
-  playing: number;
-  current: (offset: number) => void;
-};
 type CellCoord = { i: number; j: number } | null;
 
-function* scaleGenerator(
-  scaleName: string,
-  startOctave: number,
-  startPitch: string
-) {
-  const scaleNotes = (() => {
-    if (scaleName === "pentatonic") return ["C", "D", "E", "G", "A"];
-    else throw new Error("Unknown scale!");
-  })();
-
-  const startNoteIndex = scaleNotes.findIndex((pitch) => startPitch === pitch);
-  if (startNoteIndex === -1) throw new Error("Unknown start note!");
-
-  let octave = startOctave; // Starting octave
-  let noteIndex = startNoteIndex; // Index of the current note in the scale
-
-  while (true) {
-    const note = `${scaleNotes[noteIndex]}${octave}`;
-    yield note;
-
-    // Move to the next note in the scale
-    noteIndex = (noteIndex + 1) % scaleNotes.length;
-
-    // If we've wrapped around the scale, move to the next octave
-    if (noteIndex === 0) {
-      octave += 1;
-    }
-  }
-}
-
-function* take<T>(generator: Generator<T>, count: number) {
-  for (let i = 0; i < count; i++) {
-    const result = generator.next();
-    if (result.done) {
-      break;
-    }
-    yield result.value;
-  }
-}
-
-const setupPitch =
-  (instrumentIndex: number) =>
-  (value: string): Pitch => {
-    return { value, instrument: instrumentIndex, playing: 0, current: noop };
-  };
-
-const scalePitches = (
-  instrumentIndex: number,
-  scaleName: string,
-  {
-    startOctave,
-    startPitch,
-    limit,
-  }: { limit: number; startPitch: string; startOctave: number }
-): Pitch[] =>
-  Array.from(take(scaleGenerator(scaleName, startOctave, startPitch), limit))
-    .map(setupPitch(instrumentIndex))
-    .reverse();
-
-const drumkitTR808Pitches = (instrumentIndex: number): Pitch[] => [
-  {
-    value: "hihat-open/oh10",
-    instrument: instrumentIndex,
-    playing: 0,
-    current: noop,
-  },
-  {
-    value: "hihat-close/ch",
-    instrument: instrumentIndex,
-    playing: 0,
-    current: noop,
-  },
-  { value: "clap/cp", instrument: instrumentIndex, playing: 0, current: noop },
-  {
-    value: "snare/sd0075",
-    instrument: instrumentIndex,
-    playing: 0,
-    current: noop,
-  },
-  {
-    value: "kick/bd0000",
-    instrument: instrumentIndex,
-    playing: 0,
-    current: noop,
-  },
-];
-
-const drumkitTr808 = 0;
-const strings = 1;
-const marimba = 2;
-
-const pitches: Pitch[] = [
-  ...scalePitches(marimba, "pentatonic", {
-    startOctave: 4,
-    startPitch: "C",
-    limit: 5,
-  }),
-  ...scalePitches(strings, "pentatonic", {
-    startOctave: 3,
-    startPitch: "C",
-    limit: 6,
-  }),
-  ...drumkitTR808Pitches(drumkitTr808),
-];
-
-const lookupPitch = (row: number): Pitch => {
-  return pitches[row];
-};
-
-const forRange = async (
-  start: number,
-  stop: number,
-  func: (index: number) => Promise<boolean | void>
-): Promise<void> => {
-  for (let i = start; i < stop; i += 1) {
-    const stop = await func(i);
-    if (stop) return;
-  }
+const inSecs = (tempo: number, dur: number) => {
+  return (60 / (tempo / basePartsPerBeat)) * dur;
 };
 
 const getNewGrid = async (
@@ -146,8 +25,8 @@ const getNewGrid = async (
   clear = false,
   isStarter = false
 ): Promise<Grid> => {
-  const pitchesCount = basePitchesCount;
-  const beatsCount = baseBeatsCount;
+  const pitchesCount = previousGrid?.[0]?.length || basePitchesCount;
+  const beatsCount = previousGrid.length || baseBeatsCount;
 
   const grid: Grid = [];
   await forRange(0, beatsCount, async () => {
@@ -155,8 +34,8 @@ const getNewGrid = async (
     grid.push(column);
   });
 
-  await forRange(0, pitchesCount, async (row) => {
-    await forRange(0, beatsCount, async (column) => {
+  await forRange(0, beatsCount, async (row) => {
+    return await forRange(0, pitchesCount, async (column) => {
       const xPos = (overallWidth / beatsCount) * row;
       const yPos = (overallHeight / pitchesCount) * column;
       const width = overallWidth / beatsCount;
@@ -229,14 +108,15 @@ const getCellCoordsFromTouchEvent = async (
   let offsetY = e.changedTouches[0].clientY - y;
 
   let target: { row: number; column: number } | null = null;
-  await forRange(0, pitchesCount, async (row) => {
-    await forRange(0, beatsCount, async (column) => {
+  await forRange(0, beatsCount, async (row) => {
+    return await forRange(0, pitchesCount, async (column) => {
       const w = grid[row][column].w;
       const h = grid[row][column].h;
       const x = grid[row][column].x;
       const y = grid[row][column].y;
       if (pointWithinCell(w, h, x, y, offsetX, offsetY)) {
         target = { row, column };
+        return true;
       }
     });
   });
@@ -244,37 +124,39 @@ const getCellCoordsFromTouchEvent = async (
 };
 
 const TenorionCell = ({
-  isUnderCursor: playing,
   i,
   j,
-  gridWidth: width,
-  gridHeight: height,
-  pointerIsDragging: dragging,
-  pointerActionDirection: actionDirection,
-  onDown,
-  onUp,
-  active,
-  setActive,
   cellX: x,
   cellY: y,
   cellWidth: w,
   cellHeight: h,
+  gridWidth: width,
+  gridHeight: height,
+  pointerDragging,
+  pointerActionActivating,
+  onDown,
+  onUp,
+  active,
+  setActive,
+  isUnderCursor,
+  grid,
 }: {
-  isUnderCursor: boolean;
   i: number;
   j: number;
-  gridWidth: number;
-  gridHeight: number;
-  pointerIsDragging: boolean;
-  pointerActionDirection: boolean;
-  onDown: (active: boolean) => void;
-  onUp: () => void;
-  active: boolean;
-  setActive: (v: boolean) => void;
   cellX: number;
   cellY: number;
   cellWidth: number;
   cellHeight: number;
+  gridWidth: number;
+  gridHeight: number;
+  pointerDragging: boolean;
+  pointerActionActivating: boolean;
+  onDown: (active: boolean) => void;
+  onUp: () => void;
+  active: boolean;
+  setActive: (v: boolean) => void;
+  isUnderCursor: boolean;
+  grid: Grid;
 }) => {
   const [firstActive, setFirstActive] = useState(false);
 
@@ -283,6 +165,8 @@ const TenorionCell = ({
   }, [active, firstActive]);
 
   const entryDelay = i * j * 0.002;
+  const pitchesCount = grid[i].length;
+  const beatsCount = grid.length;
 
   return (
     <g
@@ -294,7 +178,7 @@ const TenorionCell = ({
       }}
       onMouseOver={(e) => {
         !hasTouch() && e.preventDefault();
-        !hasTouch() && dragging && setActive(actionDirection);
+        !hasTouch() && pointerDragging && setActive(pointerActionActivating);
       }}
       onMouseUp={() => !hasTouch() && onUp()}
     >
@@ -306,15 +190,15 @@ const TenorionCell = ({
         opacity="0"
         className="cell"
         rx={width * 0.005}
-        fill={colorFor(i, j, playing)}
-        x={x + 0.02 * (width / 16)}
-        y={y + 0.02 * (height / 16)}
+        fill={colorFor(i, j, isUnderCursor)}
+        x={x + 0.02 * (width / beatsCount)}
+        y={y + 0.02 * (height / pitchesCount)}
         width={w * 0.94}
         height={h * 0.94}
       />
       <rect
-        x={x + 0.02 * (width / 16)}
-        y={y + 0.02 * (height / 16)}
+        x={x + 0.02 * (width / beatsCount)}
+        y={y + 0.02 * (height / pitchesCount)}
         width={w * 0.94}
         height={h * 0.94}
         style={{
@@ -330,21 +214,19 @@ const TenorionCell = ({
   );
 };
 
-const getDuration = (
-  i: number,
-  j: number,
-  pitch: { value: string; instrument: number; playing?: number },
-  grid: Grid
-) => {
+const getDuration = (i: number, j: number, pitch: Pitch, grid: Grid) => {
   if (pitch.playing) {
     return 0;
   }
-  if ([0, 2].includes(pitch.instrument)) {
+  if (!pitch.join) {
     return 1;
   }
   const row = grid.map((columns) => columns[j]);
+  // console.log(row);
   const remainingAhead = row.slice(i);
+  // console.log(remainingAhead);
   const stopIndex = remainingAhead.findIndex((c) => !c.active);
+  // console.log(remainingAhead, stopIndex)
   const noteLength = remainingAhead.slice(0, stopIndex).length;
   let extraStopIndex = 0;
   if (stopIndex === -1) {
@@ -354,107 +236,119 @@ const getDuration = (
   }
 
   const totalLength = noteLength + extraStopIndex;
+  console.log({ totalLength });
   return totalLength;
 };
 
 const stopAllNotesImmediately = async (grid: Grid) => {
-  const column = grid[0];
-  if (column) {
-    column.forEach((_, j) => {
-      const p = lookupPitch(j);
-      p.current(0);
-      p.playing = 0;
-    });
-  }
+  await forRange(0, grid[0]?.length || 0, async (row) => {
+    const p = lookupPitch(row);
+    p.current?.(0);
+    p.playing = 0;
+  });
 };
 
 const Tenorion = ({}: {}) => {
+  const [loading, setLoading] = useState(false);
+
   const [width, setWidth] = useState(0);
   const [height, setHeight] = useState(0);
-  const [dragging, setDragging] = useState(false);
-  const [dragActivating, setDragActivating] = useState(false);
-  const [grid, setGrid] = useState<Grid>([]);
   const [ref, bounds] = useMeasure({ polyfill: ResizeObserver });
+
+  const [pointerDragging, setDragging] = useState(false);
+  const [pointerActionActivating, setDragActivating] = useState(false);
+
+  const [grid, setGrid] = useState<Grid>([]);
   const [cursor, setCursor] = useState(-1);
   const [lastCursor, setLastCursor] = useState(-1);
-  const [tempo, setTempo] = useState(108);
+
+  const [tempo, setTempo] = useState(100);
   const [cued, setCued] = useState(false);
-  const [intervalId, setIntervalId] = useState<number | undefined>();
+  const [tempoIntervalId, setTempoIntervalId] = useState<number | undefined>();
 
-  const drumkit = useRef<any>();
-  const strings = useRef<any>();
-  const marimba = useRef<any>();
+  const drumkitInstrument = useRef<DrumMachine>();
+  const stringsInstrument = useRef<Soundfont>();
+  const marimbaInstrument = useRef<Soundfont>();
 
-  const cueStart = async () => {
-    await stopAllNotesImmediately(grid);
-    const id = setInterval(() => {
-      setCursor((v) => {
-        if (v < 15) {
-          v = v + 1;
-        } else {
-          v = 0;
-        }
-
-        return v;
-      });
-    }, (60 * 1000) / (tempo * basePartsPerBeat));
-    setIntervalId(id);
-  };
-
-  const cueStop = async () => {
-    if (intervalId !== undefined) clearInterval(intervalId);
-  };
-
-  useEffect(() => {
-    (async () => {
-      if (cued) {
-        if (intervalId === undefined) {
-          await cueStart();
-        }
-      } else {
-        await stopAllNotesImmediately(grid);
-        await cueStop();
-        setIntervalId(undefined);
-      }
-    })();
-  }, [
-    cued,
-    tempo,
-    setCursor,
-    marimba.current,
-    drumkit.current,
-    strings.current,
-  ]);
-
+  // handles cueing the start and stop of the music
+  // also resets the music when the tempo is changed
   useEffect(() => {
     (async () => {
       await cueStop();
-      if (cued) await cueStart();
-    })();
-  }, [tempo]);
+      await cueStart(tempo);
+    })().catch((e) => console.error(e));
+  }, [cued, tempo]);
 
+  // handles playing the activated notes at the cursor
   useEffect(() => {
+    playActivatedNotes();
+  }, [cursor]);
+
+  // handles resizing of the viewport, and therefore the grid
+  useEffect(() => {
+    resizeGrid().catch((e) => console.error(e));
+  }, [bounds, setWidth, setHeight]);
+
+  const cueStart = async (tempoOverride?: number) => {
+    if (cued) {
+      await stopAllNotesImmediately(grid);
+      const id = setInterval(() => {
+        setCursor((v) => {
+          v = v + 1;
+          if (v > grid.length - 1) v = 0;
+          return v;
+        });
+      }, (60 * 1000) / ((tempoOverride || tempo) / basePartsPerBeat));
+      setTempoIntervalId(id);
+    }
+  };
+
+  const cueStop = async () => {
+    await stopAllNotesImmediately(grid);
+    clearInterval(tempoIntervalId);
+    setTempoIntervalId(undefined);
+  };
+
+  const playActivatedNotes = () => {
     if (cursor > -1 && lastCursor !== cursor) {
       setLastCursor(cursor);
-      for (let j = 0; j < 16; j += 1) {
-        const cell = grid[cursor][j];
-
-        const pitch = lookupPitch(j);
-        const instrument = (() => {
-          if (pitch.instrument === 0) return drumkit;
-          if (pitch.instrument === 1) return strings;
-          if (pitch.instrument === 2) return marimba;
-        })();
+      for (let row = 0; row < grid[cursor].length; row += 1) {
+        const cell = grid[cursor][row];
+        const pitch = lookupPitch(row);
 
         if (cell.active) {
-          const dur = getDuration(cursor, j, pitch, grid);
+          const instrument = (() => {
+            if (pitch.instrument === drumkitTr808) return drumkitInstrument;
+            if (pitch.instrument === strings) return stringsInstrument;
+            if (pitch.instrument === marimba) return marimbaInstrument;
+          })();
+          const dur = getDuration(cursor, row, pitch, grid);
           if (dur > 0) {
+            console.log("hit");
+
+            const secs = inSecs(tempo, dur);
+            const loopableSecs = secs > 3 ? 3 : secs;
             pitch.current = instrument?.current?.start({
-              duration: (60 / (tempo * 4)) * dur,
+              duration: loopableSecs,
               velocity: 80,
               note: pitch.value,
             });
             pitch.playing = dur;
+            pitch.originalLength = dur;
+          } else if (
+            inSecs(tempo, pitch.originalLength - pitch.playing) > 2.5 &&
+            inSecs(tempo, pitch.originalLength) > 2.5
+          ) {
+            const secs = inSecs(tempo, pitch.playing);
+            const loopableSecs = secs > 3 ? 3 : secs;
+            pitch.current = instrument?.current?.start({
+              duration: loopableSecs,
+              velocity: 80,
+              note: pitch.value,
+            });
+            pitch.playing = dur;
+            pitch.originalLength = dur;
+            console.log("continue!");
           }
         }
 
@@ -463,86 +357,94 @@ const Tenorion = ({}: {}) => {
         }
       }
     }
-  }, [
-    grid,
-    cursor,
-    lastCursor,
-    marimba.current,
-    drumkit.current,
-    strings.current,
-  ]);
+  };
 
-  useEffect(() => {
-    (async () => {
-      if (bounds.width > 0 && bounds.height > 0) {
-        const newMaxWidth = bounds.width * 0.9;
-        const newMaxHeight = bounds.height * 0.9;
+  const resizeGrid = async () => {
+    if (bounds.width > 0 && bounds.height > 0) {
+      const newMaxWidth = bounds.width * 0.9;
+      const newMaxHeight = bounds.height * 0.9;
 
-        let newWidth = newMaxHeight;
-        let newHeight = newMaxHeight;
-        if (newMaxWidth < newMaxHeight) {
-          newWidth = newMaxWidth;
-          newHeight = newMaxWidth;
-        }
-
-        setWidth(newWidth);
-        setHeight(newHeight);
-        setGrid(await getNewGrid(grid, newWidth, newHeight, false, true));
+      let newWidth = newMaxHeight;
+      let newHeight = newMaxHeight;
+      if (newMaxWidth < newMaxHeight) {
+        newWidth = newMaxWidth;
+        newHeight = newMaxWidth;
       }
-    })();
-  }, [bounds, setWidth, setHeight]);
+
+      setWidth(newWidth);
+      setHeight(newHeight);
+      setGrid(await getNewGrid(grid, newWidth, newHeight, false, true));
+    }
+  };
 
   const getActive = (i: number, j: number) => {
     return grid[i][j].active;
   };
 
-  const setParticularActive = (a: boolean, i: number, j: number) => {
+  const setParticularActivation = (
+    activated: boolean,
+    row: number,
+    column: number
+  ) => {
     const newGrid = _.cloneDeep(grid);
-    newGrid[i][j].active = a;
+    newGrid[row][column].active = activated;
     setGrid(newGrid);
   };
 
   const getCells = (grid: Grid) => {
     const cells: JSX.Element[][] = [];
-    if (width && height) {
-      for (let i = 0; i < 16; i += 1) {
-        const current: JSX.Element[] = [];
-        cells.push(current);
-        for (let j = 0; j < 16; j += 1) {
-          current.push(
-            <TenorionCell
-              isUnderCursor={cursor === i}
-              key={`${i}-${j}`}
-              i={i}
-              j={j}
-              cellX={grid[i][j].x}
-              cellY={grid[i][j].y}
-              cellWidth={grid[i][j].w}
-              cellHeight={grid[i][j].h}
-              gridWidth={width}
-              gridHeight={height}
-              pointerIsDragging={dragging}
-              pointerActionDirection={dragActivating}
-              onDown={(active) => {
-                setDragActivating(active);
-                setDragging(true);
-              }}
-              onUp={() => {
-                setDragging(false);
-              }}
-              active={grid[i][j].active}
-              setActive={(v) => {
-                setParticularActive(v, i, j);
-              }}
-            />
-          );
-        }
+
+    if (!width || !height) return cells;
+
+    for (let row = 0; row < grid.length; row += 1) {
+      const current: JSX.Element[] = [];
+      cells.push(current);
+      for (let column = 0; column < grid[row].length; column += 1) {
+        current.push(
+          <TenorionCell
+            isUnderCursor={cursor === row}
+            key={`${row}-${column}`}
+            i={row}
+            j={column}
+            cellX={grid[row][column].x}
+            cellY={grid[row][column].y}
+            cellWidth={grid[row][column].w}
+            cellHeight={grid[row][column].h}
+            gridWidth={width}
+            gridHeight={height}
+            pointerDragging={pointerDragging}
+            pointerActionActivating={pointerActionActivating}
+            onDown={(activated) => {
+              setDragActivating(activated);
+              setDragging(true);
+            }}
+            onUp={() => {
+              setDragging(false);
+            }}
+            active={grid[row][column].active}
+            setActive={(activated) => {
+              setParticularActivation(activated, row, column);
+            }}
+            grid={grid}
+          />
+        );
       }
     }
+
     return cells;
   };
 
-  const cells = (grid.length > 0 && getCells(grid)) || [];
+  const cells = (() => {
+    if (grid.length > 0) return getCells(grid);
+    else return [];
+  })();
+
+  const getPlayIcon = (cued: boolean, loading: boolean) => {
+    if (loading) return "spinner spin"
+    else if (cued) return "pause"
+    else return "play" 
+  }
+
   return (
     <div className="flex-shrink-0 flex-grow-1 d-flex justify-content-between align-items-spread flex-column">
       <div className="d-flex align-items-center justify-content-between">
@@ -572,23 +474,28 @@ const Tenorion = ({}: {}) => {
           <button
             className={`btn play-button btn-success rounded-circle`}
             onClick={async () => {
-              if (!drumkit.current)
-                drumkit.current = new DrumMachine(new AudioContext(), {
-                  instrument: "TR-808",
-                  volume: 127,
-                });
-              if (!strings.current)
-                strings.current = new Soundfont(new AudioContext(), {
+              if (!drumkitInstrument.current)
+                drumkitInstrument.current = new DrumMachine(
+                  new AudioContext(),
+                  {
+                    instrument: "TR-808",
+                    volume: 127,
+                  }
+                );
+              if (!stringsInstrument.current)
+                stringsInstrument.current = new Soundfont(new AudioContext(), {
                   instrument: "string_ensemble_1",
                   volume: 85,
                 });
-              if (!marimba.current)
-                marimba.current = new Soundfont(new AudioContext(), {
+              if (!marimbaInstrument.current)
+                marimbaInstrument.current = new Soundfont(new AudioContext(), {
                   instrument: "marimba",
                 });
-              await drumkit.current.load;
-              await marimba.current.load;
-              await strings.current.load;
+              setLoading(true);
+              await drumkitInstrument.current.load;
+              await marimbaInstrument.current.load;
+              await stringsInstrument.current.load;
+              setLoading(false);
               if (cued) setCursor(-1);
               setCued(!cued);
             }}
@@ -596,7 +503,7 @@ const Tenorion = ({}: {}) => {
           >
             <i
               className={`fa-xl align-middle fa-solid fa-${
-                cued ? "pause" : "play"
+                getPlayIcon(cued, loading)
               }`}
             ></i>
           </button>
@@ -605,6 +512,7 @@ const Tenorion = ({}: {}) => {
           <button
             className="text-right btn btn-danger"
             onClick={async () => {
+              await stopAllNotesImmediately(grid);
               setGrid(await getNewGrid(grid, width, height, true));
             }}
           >
@@ -625,8 +533,8 @@ const Tenorion = ({}: {}) => {
               const coords = await getCellCoordsFromTouchEvent(grid, e);
               if (coords === null) return;
               const { i, j } = coords;
-              if (getActive(i, j) !== dragActivating) {
-                setParticularActive(dragActivating, i, j);
+              if (getActive(i, j) !== pointerActionActivating) {
+                setParticularActivation(pointerActionActivating, i, j);
               }
             }}
             onTouchStart={async (e) => {
@@ -635,7 +543,7 @@ const Tenorion = ({}: {}) => {
               if (coords === null) return;
               const { i, j } = coords;
               setDragging(true);
-              setParticularActive(!getActive(i, j), i, j);
+              setParticularActivation(!getActive(i, j), i, j);
               setDragActivating(!getActive(i, j));
             }}
             onTouchEnd={(e) => {
@@ -684,32 +592,17 @@ const Tenorion = ({}: {}) => {
   );
 };
 
-export default Tenorion;
-
-const starterPattern = [
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
-  [1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
-];
-
 const hasTouch = () => {
   return "ontouchstart" in window || navigator.maxTouchPoints > 0;
 };
 
-const initialActivation = (i: number, j: number, starter: boolean): boolean => {
+const initialActivation = (
+  row: number,
+  column: number,
+  starter: boolean
+): boolean => {
   if (!starter) return false;
-  return starterPattern[j][i] === 1;
+  return starterPattern[column][row] === 1;
 };
+
+export default Tenorion;

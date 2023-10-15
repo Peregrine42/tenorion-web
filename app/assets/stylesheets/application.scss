@@ -18,7 +18,7 @@
 @import "font-awesome";
 
 .full-height {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   min-height: 100dvh;
   flex: 1;
   background-color: rgb(234, 234, 234);
@@ -54,4 +54,17 @@
   min-width: 100px;
 
   max-width: 100px;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin {
+  animation: spin 4s linear infinite;
 }
