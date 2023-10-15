@@ -2,7 +2,7 @@ import React, { useEffect, useState, JSX, useRef } from "react";
 import { ResizeObserver } from "@juggle/resize-observer";
 import useMeasure from "react-use-measure";
 import _ from "lodash";
-import Soundfont from "soundfont-player";
+import { DrumMachine, Soundfont } from "smplr";
 
 type Grid = { active: boolean; x: number; y: number; w: number; h: number }[][];
 
@@ -10,25 +10,64 @@ function hasTouch() {
   return "ontouchstart" in window || navigator.maxTouchPoints > 0;
 }
 
-const notes = [
-  "C4",
-  "D4",
-  "E4",
-  "G4",
-  "A4",
-  "C5",
-  "D5",
-  "E5",
-  "G5",
-  "A5",
-  "C6",
-  "D6",
-  "E6",
-  "G6",
-  "A6",
-  "C7",
+const starterPattern = [
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+  [1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
 ];
-function lookupNote(j) {
+
+function getStarterActivation(i: number, j: number, starter: boolean) {
+  if (!starter) return false;
+  return starterPattern[j][i] === 1;
+}
+
+const notes = [
+  {
+    value: "kick/bd0000",
+    instrument: 0,
+    playing: 0,
+    current: (v: number) => {},
+  },
+  { value: "1", instrument: 0, playing: 0, current: (v: number) => {} },
+  { value: "clap/cp", instrument: 0, playing: 0, current: (v: number) => {} },
+  {
+    value: "hihat-close/ch",
+    instrument: 0,
+    playing: 0,
+    current: (v: number) => {},
+  },
+  {
+    value: "hihat-open/oh10",
+    instrument: 0,
+    playing: 0,
+    current: (v: number) => {},
+  },
+  { value: "C4", instrument: 1, playing: 0, current: (v: number) => {} },
+  { value: "D4", instrument: 1, playing: 0, current: (v: number) => {} },
+  { value: "E4", instrument: 1, playing: 0, current: (v: number) => {} },
+  { value: "G4", instrument: 1, playing: 0, current: (v: number) => {} },
+  { value: "A4", instrument: 1, playing: 0, current: (v: number) => {} },
+  { value: "C5", instrument: 1, playing: 0, current: (v: number) => {} },
+  { value: "C4", instrument: 2, playing: 0, current: (v: number) => {} },
+  { value: "D4", instrument: 2, playing: 0, current: (v: number) => {} },
+  { value: "E4", instrument: 2, playing: 0, current: (v: number) => {} },
+  { value: "G4", instrument: 2, playing: 0, current: (v: number) => {} },
+  { value: "A4", instrument: 2, playing: 0, current: (v: number) => {} },
+];
+function lookupPitch(j: number) {
   return notes[15 - j];
 }
 
@@ -36,7 +75,8 @@ const updateGrid = (
   existingGrid: Grid,
   width: number,
   height: number,
-  clear = false
+  clear = false,
+  starter = false
 ) => {
   const grid: Grid = [];
   for (let i = 0; i < 16; i += 1) {
@@ -46,7 +86,8 @@ const updateGrid = (
       const y = (height / 16) * j;
       const w = width / 16;
       const h = height / 16;
-      const active = existingGrid[i]?.[j]?.active || false;
+      const active =
+        existingGrid[i]?.[j]?.active || getStarterActivation(i, j, starter);
       grid[i].push({
         x,
         y,
@@ -187,6 +228,33 @@ const TenorionCell = ({
   );
 };
 
+const getDuration = (
+  i: number,
+  j: number,
+  pitch: { value: string; instrument: number; playing?: number },
+  grid: Grid
+) => {
+  if (pitch.playing) {
+    return 0;
+  }
+  if ([0, 2].includes(pitch.instrument)) {
+    return 1;
+  }
+  const row = grid.map((columns) => columns[j]);
+  const remainingAhead = row.slice(i);
+  const stopIndex = remainingAhead.findIndex((c) => !c.active);
+  const noteLength = remainingAhead.slice(0, stopIndex).length;
+  let extraStopIndex = 0;
+  if (stopIndex === -1) {
+    const remainingBehind = row.slice(0, i);
+    extraStopIndex = remainingBehind.findIndex((c) => !c.active);
+    if (extraStopIndex === -1) extraStopIndex = i;
+  }
+
+  const totalLength = noteLength + extraStopIndex;
+  return totalLength;
+};
+
 const Tenorion = ({}: {}) => {
   const [width, setWidth] = useState(0);
   const [height, setHeight] = useState(0);
@@ -200,6 +268,8 @@ const Tenorion = ({}: {}) => {
   const [cued, setCued] = useState(false);
   const [intervalId, setIntervalId] = useState<number | undefined>();
 
+  const drumkit = useRef<any>();
+  const strings = useRef<any>();
   const marimba = useRef<any>();
 
   useEffect(() => {
@@ -220,19 +290,64 @@ const Tenorion = ({}: {}) => {
         clearInterval(id);
       };
     } else {
+      const col = grid[0];
+      console.log(col);
+      if (col) {
+        col.forEach((_, j) => {
+          const p = lookupPitch(j);
+          p.current(0);
+          p.playing = 0;
+        });
+      }
       if (intervalId !== undefined) clearInterval(intervalId);
     }
-  }, [cued, tempo, setCursor]);
+  }, [
+    cued,
+    tempo,
+    setCursor,
+    marimba.current,
+    drumkit.current,
+    strings.current,
+  ]);
 
   useEffect(() => {
     if (cursor > -1 && lastCursor !== cursor) {
       setLastCursor(cursor);
       for (let j = 0; j < 16; j += 1) {
         const cell = grid[cursor][j];
-        if (cell.active) marimba.current?.play(lookupNote(j));
+
+        const pitch = lookupPitch(j);
+        const instrument = (() => {
+          if (pitch.instrument === 0) return drumkit;
+          if (pitch.instrument === 1) return strings;
+          if (pitch.instrument === 2) return marimba;
+        })();
+
+        if (cell.active) {
+          const dur = getDuration(cursor, j, pitch, grid);
+          if (dur > 0) {
+            pitch.current = instrument?.current?.start({
+              duration: (60 / (tempo * 4)) * dur,
+              velocity: 80,
+              note: pitch.value,
+            });
+            pitch.playing = dur;
+          }
+        }
+
+        if (pitch.playing > 0) {
+          pitch.playing -= 1;
+        }
       }
     }
-  }, [grid, cursor, lastCursor]);
+  }, [
+    grid,
+    cursor,
+    lastCursor,
+    marimba.current,
+    drumkit.current,
+    strings.current,
+  ]);
 
   useEffect(() => {
     if (bounds.width > 0 && bounds.height > 0) {
@@ -248,7 +363,7 @@ const Tenorion = ({}: {}) => {
 
       setWidth(newWidth);
       setHeight(newHeight);
-      setGrid(updateGrid(grid, newWidth, newHeight));
+      setGrid(updateGrid(grid, newWidth, newHeight, false, true));
     }
   }, [bounds, setWidth, setHeight]);
 
@@ -310,10 +425,10 @@ const Tenorion = ({}: {}) => {
       <div className="d-flex align-items-center justify-content-between">
         <div className="w-100 p-1 flex-grow-1 btn border d-flex">
           <input
-          className="flex-grow-1 "
+            className="flex-grow-1 "
             value={tempo}
             min={40}
-            max={160}
+            max={180}
             onChange={(e) => setTempo(parseInt(e.target.value))}
             type="range"
           ></input>
@@ -332,11 +447,23 @@ const Tenorion = ({}: {}) => {
           <button
             className={`btn play-button btn-success rounded-circle`}
             onClick={async () => {
+              if (!drumkit.current)
+                drumkit.current = new DrumMachine(new AudioContext(), {
+                  instrument: "TR-808",
+                  volume: 127,
+                });
+              if (!strings.current)
+                strings.current = new Soundfont(new AudioContext(), {
+                  instrument: "string_ensemble_1",
+                  volume: 40,
+                });
               if (!marimba.current)
-                marimba.current = await Soundfont.instrument(
-                  new AudioContext(),
-                  "marimba"
-                );
+                marimba.current = new Soundfont(new AudioContext(), {
+                  instrument: "marimba",
+                });
+              await drumkit.current.load;
+              await marimba.current.load;
+              await strings.current.load;
               if (cued) setCursor(-1);
               setCued(!cued);
             }}
