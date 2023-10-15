@@ -4,175 +4,270 @@ import useMeasure from "react-use-measure";
 import _ from "lodash";
 import { DrumMachine, Soundfont } from "smplr";
 
+const noop: () => void = () => {};
+
 type Grid = { active: boolean; x: number; y: number; w: number; h: number }[][];
+type Pitch = {
+  value: string;
+  instrument: number;
+  playing: number;
+  current: (offset: number) => void;
+};
+type CellCoord = { i: number; j: number } | null;
 
-function hasTouch() {
-  return "ontouchstart" in window || navigator.maxTouchPoints > 0;
-}
+function* scaleGenerator(
+  scaleName: string,
+  startOctave: number,
+  startPitch: string
+) {
+  const scaleNotes = (() => {
+    if (scaleName === "pentatonic") return ["C", "D", "E", "G", "A"];
+    else throw new Error("Unknown scale!");
+  })();
 
-const starterPattern = [
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
-  [1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
-];
+  const startNoteIndex = scaleNotes.findIndex((pitch) => startPitch === pitch);
+  if (startNoteIndex === -1) throw new Error("Unknown start note!");
 
-function getStarterActivation(i: number, j: number, starter: boolean) {
-  if (!starter) return false;
-  return starterPattern[j][i] === 1;
-}
+  let octave = startOctave; // Starting octave
+  let noteIndex = startNoteIndex; // Index of the current note in the scale
 
-const notes = [
-  {
-    value: "kick/bd0000",
-    instrument: 0,
-    playing: 0,
-    current: (v: number) => {},
-  },
-  { value: "1", instrument: 0, playing: 0, current: (v: number) => {} },
-  { value: "clap/cp", instrument: 0, playing: 0, current: (v: number) => {} },
-  {
-    value: "hihat-close/ch",
-    instrument: 0,
-    playing: 0,
-    current: (v: number) => {},
-  },
-  {
-    value: "hihat-open/oh10",
-    instrument: 0,
-    playing: 0,
-    current: (v: number) => {},
-  },
-  { value: "C4", instrument: 1, playing: 0, current: (v: number) => {} },
-  { value: "D4", instrument: 1, playing: 0, current: (v: number) => {} },
-  { value: "E4", instrument: 1, playing: 0, current: (v: number) => {} },
-  { value: "G4", instrument: 1, playing: 0, current: (v: number) => {} },
-  { value: "A4", instrument: 1, playing: 0, current: (v: number) => {} },
-  { value: "C5", instrument: 1, playing: 0, current: (v: number) => {} },
-  { value: "C4", instrument: 2, playing: 0, current: (v: number) => {} },
-  { value: "D4", instrument: 2, playing: 0, current: (v: number) => {} },
-  { value: "E4", instrument: 2, playing: 0, current: (v: number) => {} },
-  { value: "G4", instrument: 2, playing: 0, current: (v: number) => {} },
-  { value: "A4", instrument: 2, playing: 0, current: (v: number) => {} },
-];
-function lookupPitch(j: number) {
-  return notes[15 - j];
-}
+  while (true) {
+    const note = `${scaleNotes[noteIndex]}${octave}`;
+    yield note;
 
-const updateGrid = (
-  existingGrid: Grid,
-  width: number,
-  height: number,
-  clear = false,
-  starter = false
-) => {
-  const grid: Grid = [];
-  for (let i = 0; i < 16; i += 1) {
-    grid.push([]);
-    for (let j = 0; j < 16; j += 1) {
-      const x = (width / 16) * i;
-      const y = (height / 16) * j;
-      const w = width / 16;
-      const h = height / 16;
-      const active =
-        existingGrid[i]?.[j]?.active || getStarterActivation(i, j, starter);
-      grid[i].push({
-        x,
-        y,
-        w,
-        h,
-        active: clear ? false : active,
-      });
+    // Move to the next note in the scale
+    noteIndex = (noteIndex + 1) % scaleNotes.length;
+
+    // If we've wrapped around the scale, move to the next octave
+    if (noteIndex === 0) {
+      octave += 1;
     }
   }
+}
+
+function* take<T>(generator: Generator<T>, count: number) {
+  for (let i = 0; i < count; i++) {
+    const result = generator.next();
+    if (result.done) {
+      break;
+    }
+    yield result.value;
+  }
+}
+
+const setupPitch =
+  (instrumentIndex: number) =>
+  (value: string): Pitch => {
+    return { value, instrument: instrumentIndex, playing: 0, current: noop };
+  };
+
+const scalePitches = (
+  instrumentIndex: number,
+  scaleName: string,
+  {
+    startOctave,
+    startPitch,
+    limit,
+  }: { limit: number; startPitch: string; startOctave: number }
+): Pitch[] =>
+  Array.from(
+    take(scaleGenerator(scaleName, startOctave, startPitch), limit)
+  ).map(setupPitch(instrumentIndex)).reverse();
+
+const drumkitTR808Pitches = (instrumentIndex: number): Pitch[] => [
+  {
+    value: "hihat-open/oh10",
+    instrument: instrumentIndex,
+    playing: 0,
+    current: noop,
+  },
+  {
+    value: "hihat-close/ch",
+    instrument: instrumentIndex,
+    playing: 0,
+    current: noop,
+  },
+  { value: "clap/cp", instrument: instrumentIndex, playing: 0, current: noop },
+  {
+    value: "snare/sd0075",
+    instrument: instrumentIndex,
+    playing: 0,
+    current: noop,
+  },
+  {
+    value: "kick/bd0000",
+    instrument: instrumentIndex,
+    playing: 0,
+    current: noop,
+  },
+];
+
+const marimba = 2;
+const strings = 1;
+const drumkitTr808 = 0;
+
+const pitches: Pitch[] = [
+  ...scalePitches(marimba, "pentatonic", {
+    startOctave: 4,
+    startPitch: "C",
+    limit: 5,
+  }),
+  ...scalePitches(strings, "pentatonic", {
+    startOctave: 3,
+    startPitch: "C",
+    limit: 6,
+  }),
+  ...drumkitTR808Pitches(drumkitTr808),
+];
+
+const lookupPitch = (row: number): Pitch => {
+  return pitches[row];
+};
+
+const forRange = async (
+  start: number,
+  stop: number,
+  func: (index: number) => Promise<boolean | void>
+): Promise<void> => {
+  for (let i = start; i < stop; i += 1) {
+    const stop = await func(i);
+    if (stop) return;
+  }
+};
+
+const getNewGrid = async (
+  previousGrid: Grid,
+  overallWidth: number,
+  overallHeight: number,
+  clear = false,
+  isStarter = false
+): Promise<Grid> => {
+  const pitchesCount = 16;
+  const beatsCount = 16;
+
+  const grid: Grid = [];
+  await forRange(0, beatsCount, async () => {
+    const column = [];
+    grid.push(column);
+  });
+
+  await forRange(0, pitchesCount, async (row) => {
+    await forRange(0, beatsCount, async (column) => {
+      const xPos = (overallWidth / beatsCount) * row;
+      const yPos = (overallHeight / pitchesCount) * column;
+      const width = overallWidth / beatsCount;
+      const height = overallHeight / pitchesCount;
+
+      const active =
+        previousGrid[row]?.[column]?.active ||
+        initialActivation(row, column, isStarter);
+
+      grid[row].push({
+        x: xPos,
+        y: yPos,
+        w: width,
+        h: height,
+        active: clear ? false : active,
+      });
+    });
+  });
 
   return grid;
 };
 
-function hintPlaying(r: number, g: number, b: number, playing: boolean) {
+const hintUnderCursor = (
+  r: number,
+  g: number,
+  b: number,
+  playing: boolean
+): string => {
   if (playing) {
-    r += 0;
-    g += 10;
-    b += 30;
+    return `rgb(${r},${g + 10},${b + 30})`;
+  } else {
+    return `rgb(${r},${g},${b})`;
   }
-  return `rgb(${r},${g},${b})`;
-}
+};
 
-function colorFrom(i: number, j: number, playing: boolean) {
-  if (i % 4 === 0) return hintPlaying(206, 161, 252, playing);
-  return hintPlaying(217, 196, 237, playing);
-}
+const colorFor = (i: number, j: number, playing: boolean): string => {
+  if (i % 4 === 0) return hintUnderCursor(206, 161, 252, playing);
+  return hintUnderCursor(217, 196, 237, playing);
+};
 
-function getCellCoords(grid: Grid, e: React.TouchEvent<SVGSVGElement>) {
+const pointWithinCell = (
+  w: number,
+  h: number,
+  x: number,
+  y: number,
+  offsetX: number,
+  offsetY: number
+): boolean => {
+  const withinX = offsetX > x && offsetX < x + w;
+  const withinY = offsetY > y && offsetY < y + h;
+  return withinX && withinY;
+};
+
+const getCellCoordsFromTouchEvent = async (
+  grid: Grid,
+  e: React.TouchEvent<SVGSVGElement>
+): Promise<CellCoord> => {
+  const pitchesCount = 16;
+  const beatsCount = 16;
+
   const parent = (e.target as HTMLElement).parentElement?.parentElement;
-  if (!parent) return {};
+  if (!parent) return null;
   const bb = parent.getBoundingClientRect();
   const { x, y } = bb;
 
   let offsetX = e.changedTouches[0].clientX - x;
   let offsetY = e.changedTouches[0].clientY - y;
 
-  for (let i = 0; i < 16; i += 1) {
+  let target: { i: number; j: number } | null = null;
+  await forRange(0, pitchesCount, async (i) => {
     for (let j = 0; j < 16; j += 1) {
       const w = grid[i][j].w;
       const h = grid[i][j].h;
       const x = grid[i][j].x;
       const y = grid[i][j].y;
-      if (offsetX > x && offsetX < x + w && offsetY > y && offsetY < y + h) {
-        return {
-          i,
-          j,
-        };
+      if (pointWithinCell(w, h, x, y, offsetX, offsetY)) {
+        target = { i, j };
       }
     }
-  }
-  return {};
-}
+  });
+  return target;
+};
 
 const TenorionCell = ({
-  playing,
+  isUnderCursor: playing,
   i,
   j,
-  width,
-  height,
-  dragging,
-  actionDirection,
+  gridWidth: width,
+  gridHeight: height,
+  pointerIsDragging: dragging,
+  pointerActionDirection: actionDirection,
   onDown,
   onUp,
   active,
   setActive,
-  x,
-  y,
-  w,
-  h,
+  cellX: x,
+  cellY: y,
+  cellWidth: w,
+  cellHeight: h,
 }: {
-  playing: boolean;
+  isUnderCursor: boolean;
   i: number;
   j: number;
-  width: number;
-  height: number;
-  dragging: boolean;
-  actionDirection: boolean;
+  gridWidth: number;
+  gridHeight: number;
+  pointerIsDragging: boolean;
+  pointerActionDirection: boolean;
   onDown: (active: boolean) => void;
   onUp: () => void;
   active: boolean;
   setActive: (v: boolean) => void;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
+  cellX: number;
+  cellY: number;
+  cellWidth: number;
+  cellHeight: number;
 }) => {
   const [firstActive, setFirstActive] = useState(false);
 
@@ -204,7 +299,7 @@ const TenorionCell = ({
         opacity="0"
         className="cell"
         rx={width * 0.005}
-        fill={colorFrom(i, j, playing)}
+        fill={colorFor(i, j, playing)}
         x={x + 0.02 * (width / 16)}
         y={y + 0.02 * (height / 16)}
         width={w * 0.94}
@@ -350,21 +445,23 @@ const Tenorion = ({}: {}) => {
   ]);
 
   useEffect(() => {
-    if (bounds.width > 0 && bounds.height > 0) {
-      const newMaxWidth = bounds.width * 0.9;
-      const newMaxHeight = bounds.height * 0.9;
+    (async () => {
+      if (bounds.width > 0 && bounds.height > 0) {
+        const newMaxWidth = bounds.width * 0.9;
+        const newMaxHeight = bounds.height * 0.9;
 
-      let newWidth = newMaxHeight;
-      let newHeight = newMaxHeight;
-      if (newMaxWidth < newMaxHeight) {
-        newWidth = newMaxWidth;
-        newHeight = newMaxWidth;
+        let newWidth = newMaxHeight;
+        let newHeight = newMaxHeight;
+        if (newMaxWidth < newMaxHeight) {
+          newWidth = newMaxWidth;
+          newHeight = newMaxWidth;
+        }
+
+        setWidth(newWidth);
+        setHeight(newHeight);
+        setGrid(await getNewGrid(grid, newWidth, newHeight, false, true));
       }
-
-      setWidth(newWidth);
-      setHeight(newHeight);
-      setGrid(updateGrid(grid, newWidth, newHeight, false, true));
-    }
+    })();
   }, [bounds, setWidth, setHeight]);
 
   useEffect(() => {}, []);
@@ -388,14 +485,18 @@ const Tenorion = ({}: {}) => {
         for (let j = 0; j < 16; j += 1) {
           current.push(
             <TenorionCell
-              playing={cursor === i}
+              isUnderCursor={cursor === i}
               key={`${i}-${j}`}
               i={i}
               j={j}
-              width={width}
-              height={height}
-              dragging={dragging}
-              actionDirection={dragActivating}
+              cellX={grid[i][j].x}
+              cellY={grid[i][j].y}
+              cellWidth={grid[i][j].w}
+              cellHeight={grid[i][j].h}
+              gridWidth={width}
+              gridHeight={height}
+              pointerIsDragging={dragging}
+              pointerActionDirection={dragActivating}
               onDown={(active) => {
                 setDragActivating(active);
                 setDragging(true);
@@ -407,10 +508,6 @@ const Tenorion = ({}: {}) => {
               setActive={(v) => {
                 setParticularActive(v, i, j);
               }}
-              x={grid[i][j].x}
-              y={grid[i][j].y}
-              w={grid[i][j].w}
-              h={grid[i][j].h}
             />
           );
         }
@@ -419,7 +516,7 @@ const Tenorion = ({}: {}) => {
     return cells;
   };
 
-  const cells = getCells(grid);
+  const cells = (grid.length > 0 && getCells(grid)) || [];
   return (
     <div className="flex-shrink-0 flex-grow-1 d-flex justify-content-between align-items-spread flex-column">
       <div className="d-flex align-items-center justify-content-between">
@@ -455,7 +552,7 @@ const Tenorion = ({}: {}) => {
               if (!strings.current)
                 strings.current = new Soundfont(new AudioContext(), {
                   instrument: "string_ensemble_1",
-                  volume: 40,
+                  volume: 85,
                 });
               if (!marimba.current)
                 marimba.current = new Soundfont(new AudioContext(), {
@@ -479,8 +576,8 @@ const Tenorion = ({}: {}) => {
         <div className="w-100 flex-grow-1 d-flex flex-column align-items-end">
           <button
             className="text-right btn btn-danger"
-            onClick={() => {
-              setGrid(updateGrid(grid, width, height, true));
+            onClick={async () => {
+              setGrid(await getNewGrid(grid, width, height, true));
             }}
           >
             <i className="fa-xl align-middle fa-solid fa-trash"></i>
@@ -495,17 +592,20 @@ const Tenorion = ({}: {}) => {
             width={width}
             height={height}
             className="drop-shadow"
-            onTouchMove={(e) => {
+            onTouchMove={async (e) => {
               e.stopPropagation();
-              const { i, j } = getCellCoords(grid, e);
-              if (i === undefined || j === undefined) return;
-              if (getActive(i, j) !== dragActivating)
+              const coords = await getCellCoordsFromTouchEvent(grid, e);
+              if (coords === null) return;
+              const { i, j } = coords;
+              if (getActive(i, j) !== dragActivating) {
                 setParticularActive(dragActivating, i, j);
+              }
             }}
-            onTouchStart={(e) => {
+            onTouchStart={async (e) => {
               e.stopPropagation();
-              const { i, j } = getCellCoords(grid, e);
-              if (i === undefined || j === undefined) return;
+              const coords = await getCellCoordsFromTouchEvent(grid, e);
+              if (coords === null) return;
+              const { i, j } = coords;
               setDragging(true);
               setParticularActive(!getActive(i, j), i, j);
               setDragActivating(!getActive(i, j));
@@ -557,3 +657,31 @@ const Tenorion = ({}: {}) => {
 };
 
 export default Tenorion;
+
+const starterPattern = [
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+  [1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+];
+
+const hasTouch = () => {
+  return "ontouchstart" in window || navigator.maxTouchPoints > 0;
+};
+
+const initialActivation = (i: number, j: number, starter: boolean): boolean => {
+  if (!starter) return false;
+  return starterPattern[j][i] === 1;
+};
