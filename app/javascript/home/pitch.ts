@@ -1,4 +1,4 @@
-import { noop, take } from "./utils";
+import { take } from "./utils";
 
 export type BasePitch = {
   value: string;
@@ -9,7 +9,8 @@ export type Pitch = {
   originalLength: number;
   instrument: number;
   join?: boolean;
-  current: ((offset: number) => void) | undefined;
+  doubleUp?: boolean;
+  current: ((offset: number) => void)[];
 } & BasePitch;
 
 export function* scaleGenerator(
@@ -41,15 +42,16 @@ export function* scaleGenerator(
 }
 
 export const setupPitch =
-  (instrumentIndex: number, join?: boolean) =>
+  (instrumentIndex: number, join?: boolean, doubleUp?: boolean) =>
   (value: string): Pitch => {
     return {
       value,
       instrument: instrumentIndex,
       playing: 0,
       originalLength: 0,
-      current: noop,
+      current: [],
       join,
+      doubleUp
     };
   };
 
@@ -61,17 +63,19 @@ export const scalePitches = (
     startPitch,
     limit,
     join = false,
+    doubleUp = false
   }: {
     limit: number;
     startPitch: string;
     startOctave: number;
     join?: boolean;
+    doubleUp?: boolean
   }
 ): Pitch[] => {
   return Array.from(
     take(scaleGenerator(scaleName, startOctave, startPitch), limit)
   )
-    .map(setupPitch(instrumentIndex, join))
+    .map(setupPitch(instrumentIndex, join, doubleUp))
     .reverse();
 };
 
@@ -94,10 +98,11 @@ export const pitches: Pitch[] = [
     limit: 5,
   }),
   ...scalePitches(strings, "pentatonic", {
-    startOctave: 3,
+    startOctave: 2,
     startPitch: "C",
     limit: 6,
     join: true,
+    doubleUp: true
   }),
   ...drumkitTR808Pitches().map(setupPitch(drumkitTr808)),
 ];

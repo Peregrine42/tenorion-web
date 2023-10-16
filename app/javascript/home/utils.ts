@@ -1,5 +1,3 @@
-export const noop: () => void = () => {};
-
 export const forRange = async (
   start: number,
   stop: number,
