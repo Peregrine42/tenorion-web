@@ -1,7 +1,7 @@
 # MusicGrid (Web-based Tenori-on Clone)
 
 <video controls>
- <source src="https://github.com/Peregrine42/tenorion-web/blob/main/docs/demo.ogg" type="video/ogg">
+ <source src="https://github.com/Peregrine42/tenorion-web/blob/main/docs/demo.mp4" type="video/mp4">
 </video>
 
 ## Local Dev Setup
@@ -18,7 +18,7 @@ npm install
 npm run build -- --watch
 ```
 
-## Special Thanks
+## Thanks
 
 The Smplr project for the SoundFonts and excellent JS sampler library:
 
