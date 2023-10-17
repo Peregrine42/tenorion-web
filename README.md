@@ -1,19 +1,20 @@
 # MusicGrid (Web-based Tenori-on Clone)
 
-Please make sure you unmute the video to hear the web-app play music!
-<video controls>
- <source src="https://github.com/Peregrine42/tenorion-web/blob/main/docs/demo.mp4" type="video/mp4">
-</video>
+<table>
+ <tr>
+  <td valign="top">
 
 ## Local Dev Setup
 
 To start the server:
+
 ```
 bundle install
 rails s
 ```
 
-To build (and watch) the frontend JS assets:
+To build the frontend JS assets:
+
 ```
 npm install
 npm run build -- --watch
@@ -23,4 +24,15 @@ npm run build -- --watch
 
 The Smplr project for the SoundFonts and excellent JS sampler library:
 
-  * https://github.com/danigb/smplr
+- https://github.com/danigb/smplr
+
+  </td>
+  <td>
+   Please make sure you unmute the video to hear the web-app play music!
+
+<video unmute width="100" height="100" src=https://github.com/Peregrine42/tenorion-web/assets/4731369/cf74c39c-afad-4346-94b0-562fd0a163b2></video>
+
+  </td>
+ </tr>
+ 
+</table>
