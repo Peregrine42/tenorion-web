@@ -1,5 +1,6 @@
 # MusicGrid (Web-based Tenori-on Clone)
 
+Please make sure you unmute the video to hear the web-app play music!
 <video controls>
  <source src="https://github.com/Peregrine42/tenorion-web/blob/main/docs/demo.mp4" type="video/mp4">
 </video>
