@@ -1,6 +1,6 @@
 # MusicGrid (Web-based Tenori-on Clone)
 
-<video src="docs/demo.ogg" controls title="Title"></video>
+[<video src="docs/demo.ogg" controls title="Title"></video>](docs/demo.ogg)
 
 ## Local Dev Setup
 
