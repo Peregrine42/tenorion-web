@@ -1,6 +1,8 @@
 # MusicGrid (Web-based Tenori-on Clone)
 
-[<video src="https://github.com/Peregrine42/tenorion-web/blob/main/docs/demo.ogg" controls title="Title"></video>](https://github.com/Peregrine42/tenorion-web/blob/main/docs/demo.ogg)
+<video controls>
+ <source src="https://github.com/Peregrine42/tenorion-web/blob/main/docs/demo.ogg" type="video/ogg">
+</video>
 
 ## Local Dev Setup
 
