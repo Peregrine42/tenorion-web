@@ -1,6 +1,8 @@
 # MusicGrid (Web-based Tenori-on Clone)
 
-https://raw.github.com/Peregrine42/tenorion-web/main/docs/demo.mp4
+<table>
+ <tr>
+  <td valign="top">
 
 ## Local Dev Setup
 
@@ -10,7 +12,7 @@ bundle install
 rails s
 ```
 
-To build (and watch) the frontend JS assets:
+To build the frontend JS assets:
 ```
 npm install
 npm run build -- --watch
@@ -21,3 +23,13 @@ npm run build -- --watch
 The Smplr project for the SoundFonts and excellent JS sampler library:
 
   * https://github.com/danigb/smplr
+
+   
+  </td>
+  <td>
+   <video width="100" height="100" src=https://github.com/Peregrine42/tenorion-web/assets/4731369/cf74c39c-afad-4346-94b0-562fd0a163b2></video>
+  </td>
+ </tr>
+ 
+</table>
+
