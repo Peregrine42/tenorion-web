@@ -1,24 +1,23 @@
-# README
+# MusicGrid (Web-based Tenori-on Clone)
 
-This README would normally document whatever steps are necessary to get the
-application up and running.
+<video src="docs/demo.ogg" controls title="Title"></video>
 
-Things you may want to cover:
+## Local Dev Setup
 
-* Ruby version
+To start the server:
+```
+bundle install
+rails s
+```
 
-* System dependencies
+To build (and watch) the frontend JS assets:
+```
+npm install
+npm run build -- --watch
+```
 
-* Configuration
+## Special Thanks
 
-* Database creation
+The Smplr project for the SoundFonts and excellent JS sampler library:
 
-* Database initialization
-
-* How to run the test suite
-
-* Services (job queues, cache servers, search engines, etc.)
-
-* Deployment instructions
-
-* ...
+  * https://github.com/danigb/smplr

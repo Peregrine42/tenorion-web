@@ -98,7 +98,7 @@ export const pitches: Pitch[] = [
     limit: 5,
   }),
   ...scalePitches(strings, "pentatonic", {
-    startOctave: 2,
+    startOctave: 3,
     startPitch: "C",
     limit: 6,
     join: true,
