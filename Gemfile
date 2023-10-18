@@ -44,7 +44,6 @@ gem 'tzinfo-data', platforms: %i[windows jruby]
 gem 'bootsnap', require: false
 
 # CSS
-gem 'bootstrap'
 
 # Form helpers
 gem 'simple_form'
@@ -96,5 +95,3 @@ end
 gem 'bcrypt', '~> 3.1'
 
 gem 'view_component', '~> 3.6'
-
-gem 'font-awesome-sass', '~> 6.4'

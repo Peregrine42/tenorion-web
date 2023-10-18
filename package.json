@@ -2,10 +2,16 @@
   "name": "app",
   "private": "true",
   "scripts": {
-    "build": "esbuild app/javascript/entrypoints/*.* --bundle --sourcemap --outdir=public/assets/ --public-path=assets"
+    "build": "node esbuild.mjs"
   },
   "dependencies": {
+    "@fortawesome/fontawesome-free": "^6.4.2",
+    "@fortawesome/fontawesome-svg-core": "^6.4.2",
+    "@fortawesome/free-brands-svg-icons": "^6.4.2",
+    "@fortawesome/free-solid-svg-icons": "^6.4.2",
     "@juggle/resize-observer": "^3.4.0",
+    "bootstrap": "^5.3.2",
+    "esbuild-sass-plugin": "^2.16.0",
     "lodash": "^4.17.21",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
