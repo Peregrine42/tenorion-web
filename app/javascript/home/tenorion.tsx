@@ -35,8 +35,20 @@ const hintUnderCursor = (
 };
 
 const colorFor = (i: number, j: number, playing: boolean): string => {
-  if (i % 4 === 0) return hintUnderCursor(206, 161, 252, playing);
-  return hintUnderCursor(217, 196, 237, playing);
+  const pitch = lookupPitch(j);
+  let r = 217;
+  let g = 196;
+  let b = 237;
+
+  if (i % 4 === 0) {
+    r = 206;
+    g = 161;
+    b = 252;
+  }
+
+  if (pitch.instrument % 2 === 0) r += 20;
+
+  return hintUnderCursor(r, g, b, playing);
 };
 
 const pointWithinCell = (
@@ -103,6 +115,7 @@ const TenorionCell = ({
   setActive,
   isUnderCursor,
   grid,
+  pitch,
 }: {
   i: number;
   j: number;
@@ -120,6 +133,7 @@ const TenorionCell = ({
   setActive: (v: boolean) => void;
   isUnderCursor: boolean;
   grid: Grid;
+  pitch: Pitch;
 }) => {
   const [firstActive, setFirstActive] = useState(active);
 
@@ -557,6 +571,7 @@ const Tenorion = ({}: {}) => {
               });
             }}
             grid={grid}
+            pitch={lookupPitch(row)}
           />
         );
       }
@@ -628,7 +643,7 @@ const Tenorion = ({}: {}) => {
             onClick={(e) => {
               (e.target as HTMLButtonElement).blur();
               setTempo(baseTempo);
-              localStorage.setItem("tempo", baseTempo.toString())
+              localStorage.setItem("tempo", baseTempo.toString());
             }}
             className="flex-shrink-1 reset-tempo-button btn mx-3"
           >
