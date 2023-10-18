@@ -627,7 +627,8 @@ const Tenorion = ({}: {}) => {
           <button
             onClick={(e) => {
               (e.target as HTMLButtonElement).blur();
-              setTempo(108);
+              setTempo(baseTempo);
+              localStorage.setItem("tempo", baseTempo.toString())
             }}
             className="flex-shrink-1 reset-tempo-button btn mx-3"
           >
