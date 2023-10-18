@@ -258,7 +258,7 @@ const Tenorion = ({}: {}) => {
       await cueStop();
       await cueStart(cued, tempo);
     })().catch((e) => console.error(e));
-  }, [cued, tempo]);
+  }, [tempo]);
 
   // handles playing the activated notes at the cursor
   useEffect(() => {
@@ -373,8 +373,8 @@ const Tenorion = ({}: {}) => {
     });
   }, []);
 
-  const cueStart = async (cued: boolean, tempoOverride?: number) => {
-    if (cued) {
+  const cueStart = async (c: boolean, tempoOverride?: number) => {
+    if (c) {
       await stopAllNotesImmediately(grid);
 
       const context = new AudioContext();
@@ -655,10 +655,12 @@ const Tenorion = ({}: {}) => {
         <div className="w-100 flex-shrink-1 align-middle d-flex flex-column align-items-center">
           <button
             className={`btn play-button btn-success rounded-circle`}
-            onClick={(e) => {
+            onClick={async (e) => {
               (e.target as HTMLButtonElement).blur();
               const newCued = !cued;
               setCued(newCued);
+              await cueStop();
+              await cueStart(newCued);
               if (!newCued) setCursor(-1);
             }}
             aria-label={`${cued ? "pause" : "play"} button`}
