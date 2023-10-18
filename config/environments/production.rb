@@ -3,8 +3,6 @@
 require 'active_support/core_ext/integer/time'
 
 Rails.application.configure do
-  config.assets.enabled = false
-
   # Settings specified here will take precedence over those in config/application.rb.
   config.hosts << ENV.fetch('MAIN_HOST', nil)
 
