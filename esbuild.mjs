@@ -1,5 +1,7 @@
 import esbuild from "esbuild";
 import { sassPlugin } from "esbuild-sass-plugin";
+import postcss from 'postcss';
+import copyAssets from 'postcss-copy-assets';
 
 // Generate CSS/JS Builds
 esbuild
@@ -10,7 +12,19 @@ esbuild
     ],
     outdir: "public/assets",
     bundle: true,
-    plugins: [sassPlugin()],
+    plugins: [
+      sassPlugin({
+        async transform(source, resolveDir, filePath) {
+          const { css } = await postcss()
+            .use(copyAssets({ base: `public` }))
+            .process(source, {
+              from: filePath,
+              to: `assets/assets/stylesheets/application.css`,
+            });
+          return css;
+        },
+      }),
+    ],
     loader: {
       ".png": "dataurl",
       ".woff": "dataurl",
