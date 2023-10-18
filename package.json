@@ -2,7 +2,7 @@
   "name": "app",
   "private": "true",
   "scripts": {
-    "build": "esbuild app/javascript/entrypoints/*.* --bundle --sourcemap --outdir=app/assets/builds --public-path=assets"
+    "build": "esbuild app/javascript/entrypoints/*.* --bundle --sourcemap --outdir=public/assets/ --public-path=assets"
   },
   "dependencies": {
     "@juggle/resize-observer": "^3.4.0",
