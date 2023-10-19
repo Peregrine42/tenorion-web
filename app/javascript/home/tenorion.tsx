@@ -5,7 +5,15 @@ import _ from "lodash";
 import { DrumMachine, Reverb, Soundfont } from "smplr";
 
 import { forRange } from "./utils";
-import { Pitch, drumkitTr808, lookupPitch, marimba, strings } from "./pitch";
+import {
+  AudioPitch,
+  Pitch,
+  drumkitTr808,
+  lookupPitch,
+  marimba,
+  pitches,
+  strings,
+} from "./pitch";
 import { starterPattern } from "./starterPattern";
 
 const basePitchesCount = 16;
@@ -226,6 +234,35 @@ const stopAllNotesImmediately = async (grid: Grid) => {
   });
 };
 
+// const sound1 = document.createElement("audio");
+// sound1.controls = true;
+// sound1.src =
+//   "data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA/+M4wAAAAAAAAAAAAEluZm8AAAAPAAAAAwAAAbAAqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV////////////////////////////////////////////AAAAAExhdmM1OC4xMwAAAAAAAAAAAAAAACQDkAAAAAAAAAGw9wrNaQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/+MYxAAAAANIAAAAAExBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV/+MYxDsAAANIAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV/+MYxHYAAANIAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV";
+// const sound2 = document.createElement("audio");
+// sound2.controls = true;
+// sound2.src = "/assets/sd5025.mp3";
+
+async function stringToArrayBuffer(string: string) {
+  var req = new XMLHttpRequest();
+  req.open("GET", string);
+  req.responseType = "arraybuffer";
+
+  const prom = new Promise<ArrayBuffer>((r) => {
+    req.onload = function fileLoaded(e) {
+      if (e.target) r((e.target as any).response);
+    };
+  });
+
+  req.send();
+
+  return prom;
+}
+
+const silence = document.createElement("audio");
+silence.controls = true;
+silence.src =
+  "data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA/+M4wAAAAAAAAAAAAEluZm8AAAAPAAAAAwAAAbAAqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV////////////////////////////////////////////AAAAAExhdmM1OC4xMwAAAAAAAAAAAAAAACQDkAAAAAAAAAGw9wrNaQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/+MYxAAAAANIAAAAAExBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV/+MYxDsAAANIAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV/+MYxHYAAANIAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV";
+
 const Tenorion = ({}: {}) => {
   const [loading, setLoading] = useState(false);
 
@@ -246,10 +283,12 @@ const Tenorion = ({}: {}) => {
   const [cued, setCued] = useState(false);
   const [tempoIntervalId, setTempoIntervalId] = useState<number | undefined>();
 
-  const drumkitInstrument = useRef<DrumMachine>();
-  const stringsInstrument = useRef<Soundfont>();
-  const marimbaInstrument = useRef<Soundfont>();
+  // const drumkitInstrument = useRef<DrumMachine>();
+  // const stringsInstrument = useRef<Soundfont>();
+  // const marimbaInstrument = useRef<Soundfont>();
   const reverb = useRef<Reverb>();
+  const audioLookup = useRef<Record<string, AudioBufferSourceNode>>();
+  const context = useRef<AudioContext>();
 
   // handles cueing the start and stop of the music
   // also resets the music when the tempo is changed
@@ -273,6 +312,43 @@ const Tenorion = ({}: {}) => {
   useEffect(() => {
     pointerDraggingRef.current = pointerDragging;
   }, [pointerDragging]);
+
+  const playSound = (key: string, p?: AudioPitch, context?: AudioContext) => {
+    if (key === "silence") {
+      silence.play();
+      return () => {};
+    }
+    let snd: AudioBufferSourceNode | undefined = audioLookup?.current?.[key];
+    if (p && !p.started) {
+      p.started = true;
+      snd?.start();
+    }
+
+    return async () => {
+      if (snd) {
+        snd?.stop();
+      }
+      if (
+        audioLookup &&
+        audioLookup.current &&
+        audioLookup.current[key] &&
+        p &&
+        context
+      ) {
+        const source = context?.createBufferSource();
+        const audioBuffer = await context?.decodeAudioData(
+          await stringToArrayBuffer(p?.audio)
+        );
+        if (source && context && p) {
+          source.buffer = audioBuffer || null;
+          source.connect(context.destination);
+
+          if (audioLookup.current)
+            audioLookup.current[p.value + "-" + p.instrument] = source;
+        }
+      }
+    };
+  };
 
   const toActivationsString = (activations: boolean[][]): string => {
     const acts: boolean[][] = [];
@@ -377,54 +453,54 @@ const Tenorion = ({}: {}) => {
     if (cued) {
       await stopAllNotesImmediately(grid);
 
-      const context = new AudioContext();
+      // const context = new AudioContext();
 
-      if (!context) throw new Error("Could not get AudioContext!");
-      if (!reverb.current) reverb.current = new Reverb(context);
+      // if (!context) throw new Error("Could not get AudioContext!");
+      // if (!reverb.current) reverb.current = new Reverb(context);
 
-      if (!drumkitInstrument.current) {
-        drumkitInstrument.current = new DrumMachine(context, {
-          instrument: "TR-808",
-          volume: 127,
-        });
+      // if (!drumkitInstrument.current) {
+      //   drumkitInstrument.current = new DrumMachine(context, {
+      //     instrument: "TR-808",
+      //     volume: 127,
+      //   });
 
-        drumkitInstrument.current.output.addEffect(
-          "reverb",
-          reverb.current,
-          0.07
-        );
-      }
+      //   drumkitInstrument.current.output.addEffect(
+      //     "reverb",
+      //     reverb.current,
+      //     0.07
+      //   );
+      // }
 
-      if (!stringsInstrument.current) {
-        stringsInstrument.current = new Soundfont(context, {
-          instrument: "tremolo_strings",
-          volume: 85,
-        });
+      // if (!stringsInstrument.current) {
+      //   stringsInstrument.current = new Soundfont(context, {
+      //     instrument: "tremolo_strings",
+      //     volume: 85,
+      //   });
 
-        stringsInstrument.current.output.addEffect(
-          "reverb",
-          reverb.current,
-          0.5
-        );
-      }
+      //   stringsInstrument.current.output.addEffect(
+      //     "reverb",
+      //     reverb.current,
+      //     0.5
+      //   );
+      // }
 
-      if (!marimbaInstrument.current) {
-        marimbaInstrument.current = new Soundfont(context, {
-          instrument: "marimba",
-        });
+      // if (!marimbaInstrument.current) {
+      //   marimbaInstrument.current = new Soundfont(context, {
+      //     instrument: "marimba",
+      //   });
 
-        marimbaInstrument.current.output.addEffect(
-          "reverb",
-          reverb.current,
-          0.3
-        );
-      }
+      //   marimbaInstrument.current.output.addEffect(
+      //     "reverb",
+      //     reverb.current,
+      //     0.3
+      //   );
+      // }
 
-      setLoading(true);
-      await drumkitInstrument.current.load;
-      await stringsInstrument.current.load;
-      await marimbaInstrument.current.load;
-      setLoading(false);
+      // setLoading(true);
+      // await drumkitInstrument.current.load;
+      // await stringsInstrument.current.load;
+      // await marimbaInstrument.current.load;
+      // setLoading(false);
       setCursor(-1);
 
       const id = setInterval(() => {
@@ -448,52 +524,64 @@ const Tenorion = ({}: {}) => {
     if (cursor > -1 && lastCursor !== cursor) {
       setLastCursor(cursor);
       for (let row = 0; row < grid[cursor].length; row += 1) {
-        const cell = grid[cursor][row];
         const pitch = lookupPitch(row);
         const acting = activations[cursor][row];
 
         if (acting) {
-          const instrument = (() => {
-            if (pitch.instrument === drumkitTr808) return drumkitInstrument;
-            if (pitch.instrument === strings) return stringsInstrument;
-            if (pitch.instrument === marimba) return marimbaInstrument;
-          })();
+          // const instrument = (() => {
+          //   if (pitch.instrument === drumkitTr808) return drumkitInstrument;
+          //   if (pitch.instrument === strings) return stringsInstrument;
+          //   if (pitch.instrument === marimba) return marimbaInstrument;
+          // })();
           const dur = getDuration(cursor, row, pitch, activations);
+          console.log({ dur });
           if (
-            dur > 0 ||
-            (inSecs(tempo, pitch.originalLength - pitch.playing) > 2.5 &&
-              inSecs(tempo, pitch.originalLength) > 2.5)
+            dur > 0
+            // ||
+            // (inSecs(tempo, pitch.originalLength - pitch.playing) > 2.5 &&
+            //   inSecs(tempo, pitch.originalLength) > 2.5)
           ) {
             const secs = inSecs(tempo, dur);
             const loopableSecs = secs > 3 ? 3 : secs;
             pitch.current = [];
+            pitch.playing = dur;
+            pitch.originalLength = dur;
 
-            const noteEnd = instrument?.current?.start({
-              duration: loopableSecs,
-              velocity: 80,
-              note: pitch.value,
-            });
+            const noteEnd = playSound(
+              pitch.value + "-" + pitch.instrument,
+              pitch,
+              context.current
+            );
+            // const noteEnd = instrument?.current?.start({
+            //   duration: loopableSecs,
+            //   velocity: 80,
+            //   note: pitch.value,
+            // });
 
             if (noteEnd) pitch.current.push(noteEnd);
 
-            if (pitch.doubleUp) {
-              const extraNote =
-                pitch.value[0] + (parseInt(pitch.value.slice(1)) + 1);
-              const extraNoteEnd = instrument?.current?.start({
-                duration: loopableSecs,
-                velocity: 80,
-                note: extraNote,
-              });
+            // if (pitch.doubleUp) {
+            //   const extraNote =
+            //     pitch.value[0] + (parseInt(pitch.value.slice(1)) + 1);
+            //   const extraNoteEnd = instrument?.current?.start({
+            //     duration: loopableSecs,
+            //     velocity: 80,
+            //     note: extraNote,
+            //   });
 
-              if (extraNoteEnd) pitch.current.push(extraNoteEnd);
-            }
-            pitch.playing = dur;
-            pitch.originalLength = dur;
+            //   if (extraNoteEnd) pitch.current.push(extraNoteEnd);
+            // }
           }
         }
 
+        console.log({ pitch });
         if (pitch.playing > 0) {
           pitch.playing -= 1;
+        } else {
+          if (pitch.started) {
+            pitch.started = false
+            pitch.current.forEach((c) => c(0));
+          }
         }
       }
     }
@@ -648,7 +736,7 @@ const Tenorion = ({}: {}) => {
             className="flex-shrink-1 reset-tempo-button btn mx-3"
           >
             <i className="fa-xl align-middle fa-solid fa-clock"></i>
-            &nbsp; {tempo} bpm
+            &nbsp; {tempo} bpm barzz
           </button>
         </div>
 
@@ -656,6 +744,26 @@ const Tenorion = ({}: {}) => {
           <button
             className={`btn play-button btn-success rounded-circle`}
             onClick={(e) => {
+              context.current = new AudioContext();
+
+              playSound("silence");
+
+              audioLookup.current = {};
+
+              pitches.forEach(async (p) => {
+                const source = context.current?.createBufferSource();
+                if (p && source && context.current) {
+                  const audioBuffer = await context.current?.decodeAudioData(
+                    await stringToArrayBuffer(p.audio)
+                  );
+                  source.buffer = audioBuffer || null;
+                  source.connect(context.current.destination);
+
+                  if (audioLookup.current)
+                    audioLookup.current[p.value + "-" + p.instrument] = source;
+                }
+              });
+
               (e.target as HTMLButtonElement).blur();
               const newCued = !cued;
               setCued(newCued);

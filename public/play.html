@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Audio</title>
+  </head>
+  <body>
+    <script>
+      function play() {
+        const sound = document.createElement("audio");
+        sound.controls = "controls";
+        sound.src = "/assets/sd5025.mp3";
+        sound.type = "audio/mpeg";
+
+        sound.play();
+      }
+    </script>
+
+    <input type="button" value="PLAY" onclick="play()" />
+    <audio id="audio" src="/assets/sd5025.mp3"></audio>
+  </body>
+</html>
