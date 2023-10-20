@@ -2,19 +2,16 @@ import React, { useEffect, useState, JSX, useRef } from "react";
 import { ResizeObserver } from "@juggle/resize-observer";
 import useMeasure from "react-use-measure";
 import _ from "lodash";
-// import { DrumMachine, Reverb, Soundfont } from "smplr";
 
 import { forRange } from "./utils";
-import {
-  AudioPitch,
-  Pitch,
-  drumkitTR808Pitches,
-  marimbaPitches,
-  stringPitches,
-} from "./pitch";
+import { Pitch, pendingInstruments } from "./pitch";
 import { starterPattern } from "./starterPattern";
-import { Instrument, Sequencer } from "./sequencer";
-import { Reverb, setContext as toneSetContext, connect as toneConnect } from "tone";
+import { Sequencer } from "./sequencer";
+import {
+  Reverb,
+  setContext as toneSetContext,
+  connect as toneConnect,
+} from "tone";
 
 const basePitchesCount = 16;
 const baseBeatsCount = 16;
@@ -117,8 +114,7 @@ const TenorionCell = ({
   setActive,
   isUnderCursor,
   grid,
-}: // pitch,
-{
+}: {
   i: number;
   j: number;
   cellX: number;
@@ -135,7 +131,6 @@ const TenorionCell = ({
   setActive: (v: boolean) => void;
   isUnderCursor: boolean;
   grid: Grid;
-  // pitch: Pitch;
 }) => {
   const [firstActive, setFirstActive] = useState(active);
 
@@ -220,30 +215,6 @@ const getDuration = (
   return totalLength;
 };
 
-// const sound1 = document.createElement("audio");
-// sound1.controls = true;
-// sound1.src =
-//   "data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA/+M4wAAAAAAAAAAAAEluZm8AAAAPAAAAAwAAAbAAqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV////////////////////////////////////////////AAAAAExhdmM1OC4xMwAAAAAAAAAAAAAAACQDkAAAAAAAAAGw9wrNaQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/+MYxAAAAANIAAAAAExBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV/+MYxDsAAANIAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV/+MYxHYAAANIAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV";
-// const sound2 = document.createElement("audio");
-// sound2.controls = true;
-// sound2.src = "/assets/sd5025.mp3";
-
-async function stringToArrayBuffer(string: string) {
-  var req = new XMLHttpRequest();
-  req.open("GET", string);
-  req.responseType = "arraybuffer";
-
-  const prom = new Promise<ArrayBuffer>((r) => {
-    req.onload = function fileLoaded(e) {
-      if (e.target) r((e.target as any).response);
-    };
-  });
-
-  req.send();
-
-  return prom;
-}
-
 const silence = document.createElement("audio");
 silence.controls = true;
 silence.src =
@@ -300,30 +271,8 @@ const Tenorion = ({}: {}) => {
     pointerDraggingRef.current = pointerDragging;
   }, [pointerDragging]);
 
-  const playSound = async (
-    key: string,
-    p?: AudioPitch,
-    context?: AudioContext
-  ) => {
-    if (key === "silence") {
-      silence.play();
-      return 0;
-    }
-    // let snd: Howl | undefined = audioLookup?.current?.[key];
-
-    // if (!snd && p) {
-    //   snd = new Howl({
-    //     src: [p.audio],
-    //     format: [p.format],
-    //   });
-
-    //   if (audioLookup.current)
-    //     audioLookup.current[p.value + "-" + p.instrument] = snd;
-    // }
-
-    // const id = snd?.play();
-
-    // return id;
+  const playSilence = async () => {
+    silence.play();
   };
 
   const toActivationsString = (activations: boolean[][]): string => {
@@ -418,118 +367,6 @@ const Tenorion = ({}: {}) => {
       setTempo(newTempo);
       sequencer.current?.setTempo(newTempo);
 
-      const pendingInstruments: Instrument[] = [
-        {
-          name: "marimba",
-          continuous: false,
-          pitches: [
-            {
-              format: "mp3",
-              name: "A4",
-              sample: marimbaPitches["A4"],
-            },
-            {
-              format: "mp3",
-              name: "G4",
-              sample: marimbaPitches["G4"],
-            },
-            {
-              format: "mp3",
-              name: "E4",
-              sample: marimbaPitches["E4"],
-            },
-            {
-              format: "mp3",
-              name: "D4",
-              sample: marimbaPitches["D4"],
-            },
-            {
-              format: "mp3",
-              name: "C4",
-              sample: marimbaPitches["C4"],
-            },
-          ],
-        },
-        {
-          name: "tremolo_strings",
-          continuous: true,
-          pitches: [
-            {
-              gain: 2,
-              format: "m4a",
-              name: "C4",
-              sample: stringPitches["C4"],
-            },
-            {
-              gain: 2,
-              format: "m4a",
-              name: "A3",
-              sample: stringPitches["A3"],
-            },
-            {
-              gain: 2,
-              format: "m4a",
-              name: "G3",
-              sample: stringPitches["G3"],
-            },
-            {
-              gain: 2,
-              format: "m4a",
-              name: "E3",
-              sample: stringPitches["E3"],
-            },
-            {
-              gain: 2,
-              format: "m4a",
-              name: "D3",
-              sample: stringPitches["D3"],
-            },
-            {
-              gain: 2,
-              format: "m4a",
-              name: "C3",
-              sample: stringPitches["C3"],
-            },
-          ],
-        },
-        {
-          name: "drumkit",
-          continuous: false,
-          pitches: [
-            {
-              format: "m4a",
-              name: "hh_open",
-              sample: drumkitTR808Pitches["hh_open"],
-              gain: 0.2,
-            },
-            {
-              format: "m4a",
-              name: "hh_close",
-              sample: drumkitTR808Pitches["hh_close"],
-              gain: 0.1,
-            },
-            {
-              format: "m4a",
-              name: "clap",
-              gain: 0.3,
-              sample: drumkitTR808Pitches["clap"],
-            },
-            {
-              format: "m4a",
-              name: "snare",
-              sample: drumkitTR808Pitches["snare"],
-              gain: 0.5,
-            },
-            {
-              format: "m4a",
-              name: "kick",
-              sample: drumkitTR808Pitches["kick"],
-              gain: 0.95,
-            },
-          ],
-        },
-      ];
-
       sequencer.current.setup(baseBeatsCount, pendingInstruments, acts);
     })();
 
@@ -555,162 +392,6 @@ const Tenorion = ({}: {}) => {
   const stopAllNotesImmediately = async (grid: Grid) => {
     await sequencer.current?.stopPlayingPitchesNow();
   };
-
-  // const cueStop = async () => {
-  //   await sequencer.current?.stop();
-  // };
-
-  // const cueStart = async (cued: boolean, tempoOverride?: number) => {
-  //   if (cued) {
-  //     await sequencer.current?.play();
-  //     // await stopAllNotesImmediately(grid);
-
-  //     // const context = new AudioContext();
-
-  //     // if (!context) throw new Error("Could not get AudioContext!");
-
-  //     // if (!drumkitInstrument.current) {
-  //     //   drumkitInstrument.current = new DrumMachine(context, {
-  //     //     instrument: "TR-808",
-  //     //     volume: 127,
-  //     //   });
-
-  //     //   drumkitInstrument.current.output.addEffect(
-  //     //     "reverb",
-  //     //     reverb.current,
-  //     //     0.07
-  //     //   );
-  //     // }
-
-  //     // if (!stringsInstrument.current) {
-  //     //   stringsInstrument.current = new Soundfont(context, {
-  //     //     instrument: "tremolo_strings",
-  //     //     volume: 85,
-  //     //   });
-
-  //     //   stringsInstrument.current.output.addEffect(
-  //     //     "reverb",
-  //     //     reverb.current,
-  //     //     0.5
-  //     //   );
-  //     // }
-
-  //     // if (!marimbaInstrument.current) {
-  //     //   marimbaInstrument.current = new Soundfont(context, {
-  //     //     instrument: "marimba",
-  //     //   });
-
-  //     //   marimbaInstrument.current.output.addEffect(
-  //     //     "reverb",
-  //     //     reverb.current,
-  //     //     0.3
-  //     //   );
-  //     // }
-
-  //     // setLoading(true);
-  //     // await drumkitInstrument.current.load;
-  //     // await stringsInstrument.current.load;
-  //     // await marimbaInstrument.current.load;
-  //     // setLoading(false);
-
-  //     // const id = setInterval(() => {
-  //     //   setCursor((v) => {
-  //     //     v = v + 1;
-  //     //     if (v > grid.length - 1) v = 0;
-  //     //     return v;
-  //     //   });
-  //     // }, (60 * 1000) / ((tempoOverride || tempo) / basePartsPerBeat));
-  //     // setTempoIntervalId(id);
-  //   }
-  // };
-
-  // const playActivatedNotes = async () => {
-  //   if (cursor > -1 && lastCursor !== cursor) {
-  //     setLastCursor(cursor);
-  //     for (let row = 0; row < grid[cursor].length; row += 1) {
-  //       const pitch = lookupPitch(row);
-
-  //       if (pitch.playing === 1) {
-  //         const id = pitch.current[0];
-  //         if (pitch && context) {
-  //           setTimeout(() => {
-  //             audioLookup.current?.[pitch.value + "-" + pitch.instrument]?.stop(
-  //               id
-  //             );
-  //           }, inSecs(tempo, 1));
-
-  //           pitch.current.shift();
-  //         }
-  //       }
-
-  //       if (
-  //         inSecs(tempo, pitch.originalLength - pitch.playing) > 2.5 &&
-  //         inSecs(tempo, pitch.originalLength)
-  //       ) {
-  //         const dur = getDuration(cursor, row, pitch, activations);
-  //         pitch.playing = dur;
-  //         pitch.originalLength = dur;
-  //         const id = await playSound(
-  //           pitch.value + "-" + pitch.instrument,
-  //           pitch,
-  //           context.current
-  //         );
-
-  //         if (id !== undefined) pitch.current.push(id);
-  //       }
-
-  //       const acting = activations[cursor][row];
-
-  //       if (acting) {
-  //         // const instrument = (() => {
-  //         //   if (pitch.instrument === drumkitTr808) return drumkitInstrument;
-  //         //   if (pitch.instrument === strings) return stringsInstrument;
-  //         //   if (pitch.instrument === marimba) return marimbaInstrument;
-  //         // })();
-  //         const dur = getDuration(cursor, row, pitch, activations);
-  //         console.log({ dur });
-  //         if (dur > 0 && pitch.playing === 0) {
-  //           // const secs = inSecs(tempo, dur);
-  //           // const loopableSecs = secs > 3 ? 3 : secs;
-  //           pitch.current = [];
-  //           pitch.playing = dur;
-  //           pitch.originalLength = pitch.playing;
-
-  //           const id = await playSound(
-  //             pitch.value + "-" + pitch.instrument,
-  //             pitch,
-  //             context.current
-  //           );
-  //           // const noteEnd = instrument?.current?.start({
-  //           //   duration: loopableSecs,
-  //           //   velocity: 80,
-  //           //   note: pitch.value,
-  //           // });
-
-  //           if (id) {
-  //             pitch.current.push(id);
-  //             console.log(pitch.current);
-  //           }
-
-  //           // if (pitch.doubleUp) {
-  //           //   const extraNote =
-  //           //     pitch.value[0] + (parseInt(pitch.value.slice(1)) + 1);
-  //           //   const extraNoteEnd = instrument?.current?.start({
-  //           //     duration: loopableSecs,
-  //           //     velocity: 80,
-  //           //     note: extraNote,
-  //           //   });
-
-  //           //   if (extraNoteEnd) pitch.current.push(extraNoteEnd);
-  //           // }
-  //         }
-  //       }
-  //       // console.log({ pitch });
-
-  //       if (pitch.playing > 0) pitch.playing -= 1;
-  //     }
-  //   }
-  // };
 
   const resizeGrid = async (grid: Grid) => {
     if (bounds.width > 0 && bounds.height > 0) {
@@ -839,25 +520,12 @@ const Tenorion = ({}: {}) => {
   };
 
   const onPlay = async (e: Event, newCued: boolean) => {
-    // pitches.forEach(async (p) => {
-    //   const source = context.current?.createBufferSource();
-    //   if (p && source && context.current) {
-    //     const audioBuffer = await context.current?.decodeAudioData(
-    //       await stringToArrayBuffer(p.audio)
-    //     );
-    //     source.buffer = audioBuffer || null;
-    //     source.connect(context.current.destination);
-
-    //     if (audioLookup.current)
-    //       audioLookup.current[p.value + "-" + p.instrument] = source;
-    //   }
-    // });
-
     (e.target as HTMLButtonElement).blur();
     if (newCued) {
+      // check if we are starting playing for the first time
       if (!howlerVars.current) {
         howlerVars.current = await sequencer.current?.getHowlerVars();
-        await playSound("silence");
+        await playSilence(); // a hack to get iPads to allow sequenced sounds through
         if (howlerVars.current?.ctx) toneSetContext(howlerVars.current?.ctx);
         const reverb = new Reverb(1);
 
@@ -868,12 +536,9 @@ const Tenorion = ({}: {}) => {
       }
 
       await sequencer.current?.play();
-      // audioLookup.current = {};
     } else {
       await sequencer.current?.stop();
     }
-
-    // if (!newCued) setCursor(-1);
   };
 
   return (
