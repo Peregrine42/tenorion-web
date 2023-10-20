@@ -6,6 +6,7 @@ import copyAssets from 'postcss-copy-assets';
 // Generate CSS/JS Builds
 esbuild
   .build({
+    inject: ["shim.js"],
     entryPoints: [
       "app/assets/stylesheets/application.scss",
       "app/javascript/entrypoints/*.tsx",

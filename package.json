@@ -12,6 +12,7 @@
     "@juggle/resize-observer": "^3.4.0",
     "bootstrap": "^5.3.2",
     "esbuild-sass-plugin": "^2.16.0",
+    "howler": "^2.2.4",
     "lodash": "^4.17.21",
     "postcss": "^8.4.31",
     "postcss-copy-assets": "^0.3.1",
@@ -19,9 +20,11 @@
     "react-dom": "^18.2.0",
     "react-use-measure": "^2.1.1",
     "smplr": "^0.11.1",
+    "tone": "^14.7.77",
     "typescript": "^5.2.2"
   },
   "devDependencies": {
+    "@types/howler": "^2.2.10",
     "@types/lodash": "^4.14.199",
     "@types/react": "^18.2.28",
     "@types/react-dom": "^18.2.13",
