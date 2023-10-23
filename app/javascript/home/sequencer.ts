@@ -1,12 +1,22 @@
 import _ from "lodash";
 import { forRange } from "./utils";
-import { Howl, Howler } from "howler";
+import {
+  Player as TonePlayer,
+  connect as toneConnect,
+  Channel as ToneChannel,
+  ToneAudioNode,
+  Gain,
+  Compressor,
+  Reverb,
+} from "tone";
+import { clearRequestInterval, requestInterval } from "./requestInterval";
 
 export type InstrumentPitch = {
   name: string;
   sample: string;
   format: string;
   gain?: number;
+  offset?: number;
 };
 
 export type Instrument = {
@@ -17,10 +27,15 @@ export type Instrument = {
 
 type ReadyInstrumentPitch = {
   settings: InstrumentPitch;
-  howlObj: Howl;
   index: number;
   continuous: boolean;
-  gain?: number;
+  gain: number;
+  offset: number;
+  loop: {
+    value?: number;
+  }[];
+  playing: boolean;
+  samplerName: string;
 };
 
 type Activation = {
@@ -32,25 +47,101 @@ type Activation = {
 type Playing = {
   subBeatsPlayed: number;
   endDueAfter: number;
-  howlId: number;
-  activation: Activation;
+  note: Note;
 };
 
+type Note = {
+  startIndex: number;
+  endIndex: number;
+  duration: number;
+  pitch: ReadyInstrumentPitch;
+};
+
+export class SampleBank {
+  samplers: Record<string, TonePlayer>;
+
+  constructor(public mainOutput: ToneChannel) {
+    this.samplers = {};
+  }
+
+  async setupNewSampler(
+    name: string,
+    sample: string,
+    gain: number = 0,
+    continuous: boolean = false
+  ) {
+    const sampler = await new Promise<TonePlayer>((r) => {
+      const s: TonePlayer = new TonePlayer(sample, () => {
+        toneConnect(s, this.mainOutput);
+        r(s);
+      });
+    });
+
+    sampler.volume.value = gain;
+
+    if (continuous) {
+      sampler.loop = true;
+      sampler.loopStart = 1;
+      sampler.loopEnd = 2;
+    }
+
+    this.samplers[name] = sampler;
+  }
+}
+
+const sampleBank = new SampleBank(new ToneChannel());
+const silence = document.createElement("audio");
+silence.controls = true;
+silence.src =
+  "data:audio/mpeg;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA/+M4wAAAAAAAAAAAAEluZm8AAAAPAAAAAwAAAbAAqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV////////////////////////////////////////////AAAAAExhdmM1OC4xMwAAAAAAAAAAAAAAACQDkAAAAAAAAAGw9wrNaQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/+MYxAAAAANIAAAAAExBTUUzLjEwMFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV/+MYxDsAAANIAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV/+MYxHYAAANIAAAAAFVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV";
+
+const _notes: Note[] = [];
+const _playing: Playing[] = [];
+
 export class Sequencer {
-  totalSubBeats = 0;
+  _activations: Activation[][] = [];
+  _totalSubBeats = 0;
+  _totalPitches = 0;
   pending: Record<string, Instrument> = {};
   pitches: Record<string, ReadyInstrumentPitch> = {};
-  activations: Activation[][] = [];
-  onSubbeat: (newSubBeat: number) => Promise<void>;
-  tempo = 108;
+  _tempo = 108;
   cursor = -1;
   subBeatsPerBeat = 0.25;
-  intervalId: number | undefined = undefined;
-  playing: Playing[] = [];
-  isPlaying: boolean = false;
+  intervalId: { value?: number } | undefined = undefined;
+  _playing: boolean = false;
+  _isSetUp: boolean = false;
+  _isConnected: boolean = false;
 
-  constructor(onSubbeat: (newSubBeat: number) => Promise<void>) {
-    this.onSubbeat = onSubbeat;
+  isSetUp() {
+    return this._isSetUp;
+  }
+
+  isPlaying() {
+    return this._playing;
+  }
+
+  isConnected() {
+    return this._isConnected;
+  }
+
+  getTempo() {
+    return this._tempo;
+  }
+
+  getTotalSubBeats() {
+    return this._totalSubBeats;
+  }
+
+  getTotalPitches() {
+    return this._totalPitches;
+  }
+
+  getActivations() {
+    return this._activations;
+  }
+
+  getCursor() {
+    return this.cursor;
   }
 
   async setup(
@@ -58,28 +149,36 @@ export class Sequencer {
     pendingInstruments: Instrument[],
     initialActivations: boolean[][]
   ) {
-    this.totalSubBeats = totalSubBeats;
+    this._totalSubBeats = totalSubBeats;
     let index = 0;
     for (const inst of pendingInstruments) {
       for (const pitch of inst.pitches) {
+        await sampleBank.setupNewSampler(
+          `${inst.name}-${pitch.name}`,
+          pitch.sample,
+          pitch.gain,
+          inst.continuous
+        );
+
         this.pitches[`${inst.name}-${pitch.name}`] = {
+          playing: false,
           settings: pitch,
-          howlObj: new Howl({
-            src: pitch.sample,
-            format: pitch.format,
-            volume: pitch.gain || 1,
-          }),
           index,
           continuous: inst.continuous,
-          gain: pitch.gain,
+          gain: pitch.gain || 1,
+          offset: pitch.offset || 0,
+          loop: [],
+          samplerName: `${inst.name}-${pitch.name}`,
         };
+
         index += 1;
       }
     }
+    this._totalPitches = index;
 
     await forRange(0, totalSubBeats, async (subBeat) => {
       const subBeatColumn: Activation[] = [];
-      this.activations.push(subBeatColumn);
+      this._activations.push(subBeatColumn);
       for (const inst of pendingInstruments) {
         for (const pitch of inst.pitches) {
           subBeatColumn.push({
@@ -95,165 +194,242 @@ export class Sequencer {
     for (const subBeatColumn of initialActivations) {
       let j = 0;
       for (const row of subBeatColumn) {
-        const act = this.activations[i][j];
-        if (row) this.toggleActivation(act);
+        const act = this._activations[i][j];
+        if (row) await this.toggleActivation(act);
         j += 1;
       }
       i += 1;
     }
+
+    this._isSetUp = true;
   }
 
   setTempo = _.debounce(async (newTempo: number) => {
-    if (this.isPlaying) await this.pause();
-    this.tempo = newTempo;
-    if (this.isPlaying) await this.play();
+    if (this._playing) await this.pause();
+    this._tempo = newTempo;
+    if (this._playing) await this.play();
   }, 500);
 
   async toggleActivation(activation: Activation, activationOverride?: boolean) {
     if (activationOverride !== undefined)
       activation.active = activationOverride;
     else activation.active = !activation.active;
-  }
 
-  async tick() {
-    this.isPlaying = true;
-    await this.stopPitchesEndingNext();
-    this.cursor += 1;
-    if (this.cursor >= this.totalSubBeats) this.cursor = 0;
-    this.onSubbeat?.(this.cursor);
-    await this.playPitchesStartingNow();
-    await this.overlapLoopingPitches();
-  }
+    const startIndex =
+      activation.subBeat === this._totalSubBeats - 1
+        ? 0
+        : activation.subBeat + 1;
 
-  async overlapLoopingPitches() {
-    const newIds: { id: number; activation: Activation }[] = [];
-    for (const playing of this.playing) {
-      const currentActivation =
-        this.activations[this.cursor][playing.activation.pitch.index];
-      if (playing.subBeatsPlayed > this.inBeats(2)) {
-        playing.activation.pitch.howlObj.fade(1, 0, 150, playing.howlId);
-        const id = currentActivation.pitch.howlObj.play();
-        newIds.push({ id, activation: currentActivation });
+    this.filterContinuousNotes(activation.pitch.index);
+    let candidate: null | Activation = null;
+    let looped = false;
+    for (
+      let i = startIndex;
+      looped === false || i < startIndex;
+      i === this._totalSubBeats - 1 ? (i = -1) : (i += 1)
+    ) {
+      if (i === -1) {
+        looped = true;
+        continue;
+      }
+      candidate = this._activations[i][activation.pitch.index];
+      if (!candidate.active) {
+        break;
+      } else {
+        candidate = null;
       }
     }
 
-    let found = this.playing.findIndex(
-      (p) => p.subBeatsPlayed > this.inBeats(2)
-    );
-    while (found > -1) {
-      this.playing.splice(found, 1);
-      found = this.playing.findIndex((p) => p.subBeatsPlayed > this.inBeats(2));
+    if (candidate === null) {
+      _notes.push({
+        duration: this._totalSubBeats,
+        startIndex: 0,
+        endIndex: -1,
+        pitch: activation.pitch,
+      });
+      return;
     }
 
-    for (const { id, activation } of newIds) {
-      this.playing.push({
-        endDueAfter: await this.figureOutDuration(activation),
-        activation,
-        howlId: id,
+    const sIndex =
+      candidate.subBeat === this._totalSubBeats - 1 ? 0 : candidate.subBeat + 1;
+    let c = candidate;
+    let foundNote = false;
+    let dur = 0;
+    let starting = -1;
+    let ending = -1;
+    let l = false;
+    for (
+      let i = sIndex;
+      l === false || i < sIndex;
+      i === this._totalSubBeats - 1 ? (i = -1) : (i += 1)
+    ) {
+      if (i === -1) {
+        l = true;
+        continue;
+      }
+      c = this._activations[i][activation.pitch.index];
+      if (c.active) {
+        foundNote = true;
+        if (starting === -1) starting = c.subBeat;
+      } else {
+        if (starting > -1) {
+          _notes.push({
+            duration: dur,
+            startIndex: starting,
+            endIndex: ending,
+            pitch: c.pitch,
+          });
+          dur = 0;
+          starting = -1;
+          ending = -1;
+        }
+        foundNote = false;
+      }
+      ending = c.subBeat;
+
+      if (foundNote) dur += 1;
+    }
+
+    if (starting > -1) {
+      _notes.push({
+        duration: dur,
+        startIndex: starting,
+        endIndex: c.subBeat,
+        pitch: c.pitch,
+      });
+      dur = 0;
+      starting = -1;
+    }
+  }
+
+  filterContinuousNotes(index: number) {
+    let i = _notes.findIndex((n) => n.pitch.index === index);
+    while (i > -1) {
+      _notes.splice(i, 1);
+      i = _notes.findIndex((n) => n.pitch.index === index);
+    }
+  }
+
+  async tick(starting = false) {
+    this._playing = true;
+    this.cursor += 1;
+    if (this.cursor >= this._totalSubBeats) this.cursor = 0;
+    await this.playPitchesStartingNow(starting);
+    await this.stopPitchesEndingNext();
+  }
+
+  async play() {
+    this._playing = true;
+    if (!this.intervalId) {
+      this.intervalId = requestInterval(async () => {
+        await this.tick();
+      }, (60 * 1000) / (this._tempo / this.subBeatsPerBeat));
+
+      await this.tick(true);
+    }
+  }
+
+  async connect(node: ToneAudioNode) {
+    this._isConnected = true;
+    toneConnect(sampleBank.mainOutput, node);
+  }
+
+  async stopPitchesEndingNext(): Promise<void> {
+    const prevCursor =
+      this.cursor === 0 ? this._totalSubBeats - 1 : this.cursor - 1;
+
+    const subBeatNotes = _notes.filter(
+      (n) => n.endIndex === prevCursor && n.duration !== this._totalSubBeats
+    );
+
+    for (const note of subBeatNotes) {
+      const playingNotes = _playing.filter((p) => p.note.pitch === note.pitch);
+      for (const playing of playingNotes) {
+        playing.note.pitch.playing = false;
+        const sampler = sampleBank.samplers[playing.note.pitch.samplerName];
+        if (playing.note.pitch.continuous) sampler.stop();
+      }
+    }
+  }
+
+  async playPitchesStartingNow(starting = false): Promise<void> {
+    let extra: Note[] = [];
+
+    if (starting) {
+      extra = _notes
+        .filter((n) => n.startIndex > this.cursor && n.endIndex < n.startIndex)
+        .map((n) => {
+          return {
+            duration: n.duration,
+            pitch: n.pitch,
+            startIndex: n.startIndex,
+            endIndex: n.endIndex,
+          };
+        });
+    }
+
+    const subBeatNotes = _notes
+      .filter(
+        (n) =>
+          (n.startIndex === this.cursor &&
+            n.duration !== this._totalSubBeats) ||
+          (n.duration === this._totalSubBeats && !n.pitch.playing)
+      )
+      .map((n) => {
+        return {
+          duration: n.duration,
+          pitch: n.pitch,
+          startIndex: n.startIndex,
+          endIndex: n.endIndex,
+        };
+      });
+
+    const all = [...subBeatNotes, ...extra];
+    for (const note of all) {
+      if (note.pitch.continuous) note.pitch.playing = true;
+      const dur = note.duration;
+      const sampler = sampleBank.samplers[note.pitch.samplerName];
+      sampler.start();
+      _playing.push({
+        endDueAfter: dur,
+        note,
         subBeatsPlayed: 1,
       });
     }
   }
 
-  async play() {
-    if (!this.intervalId) {
-      this.intervalId = setInterval(async () => {
-        await this.tick();
-      }, (60 * 1000) / (this.tempo / this.subBeatsPerBeat));
-
-      await this.tick();
-    }
-  }
-
-  async getHowlerVars() {
-    return { masterGain: Howler.masterGain, ctx: Howler.ctx };
-  }
-
-  async stopPitchesEndingNext(): Promise<void> {
-    for (const playing of this.playing) {
-      playing.endDueAfter = await this.figureOutDuration(playing.activation);
-      playing.subBeatsPlayed += 1;
-      if (playing.subBeatsPlayed >= playing.endDueAfter) {
-        playing.activation.pitch.howlObj.stop(playing.howlId);
-      }
-    }
-
-    let found = this.playing.findIndex(
-      (p) => p.subBeatsPlayed >= p.endDueAfter
-    );
-    while (found > -1) {
-      this.playing.splice(found, 1);
-      found = this.playing.findIndex((p) => p.subBeatsPlayed >= p.endDueAfter);
-    }
-  }
-
-  async playPitchesStartingNow(): Promise<void> {
-    const subBeatActivations = this.activations[this.cursor];
-
-    for (const activation of subBeatActivations) {
-      if (activation.active && !this.alreadyPlaying(activation)) {
-        const id = activation.pitch.howlObj.play();
-        this.playing.push({
-          endDueAfter: await this.figureOutDuration(activation),
-          activation: activation,
-          howlId: id,
-          subBeatsPlayed: 1,
-        });
-      }
-    }
-  }
-
-  alreadyPlaying(activation: Activation) {
-    return this.playing.find((p) => p.activation.pitch === activation.pitch);
-  }
-
-  async figureOutDuration(activation: Activation): Promise<number> {
-    if (!activation.pitch.continuous) return 1;
-
-    let duration = 1;
-    const startingIndex = activation.subBeat;
-    const stoppingIndex =
-      activation.subBeat === 0 ? this.totalSubBeats - 1 : startingIndex - 1;
-    for (
-      let i = startingIndex;
-      i !== stoppingIndex;
-      i === this.totalSubBeats - 1 ? (i = 0) : (i += 1)
-    ) {
-      const candidate = this.activations[i][activation.pitch.index];
-      if (!candidate.active) break;
-      duration += 1;
-    }
-
-    return duration;
-  }
-
   async stopPlayingPitchesNow(): Promise<void> {
-    for (const playing of this.playing) {
-      playing.activation.pitch.howlObj.stop(playing.howlId);
+    for (const p of _playing) {
+      for (const loop of p.note.pitch.loop)
+        if (loop.value) {
+          cancelAnimationFrame(loop.value);
+          p.note.pitch.loop = [];
+        }
+      const sampler = sampleBank.samplers[p.note.pitch.samplerName];
+      sampler.stop();
     }
 
-    while (this.playing.length) {
-      this.playing.splice(0, 1);
+    while (_playing.length) {
+      _playing.splice(0, 1);
     }
   }
 
   async pause() {
     await this.stopPlayingPitchesNow();
-    clearInterval(this.intervalId);
-    this.intervalId = 0;
+    if (this.intervalId !== undefined) clearRequestInterval(this.intervalId);
+    this.intervalId = undefined;
   }
 
   async stop() {
     await this.stopPlayingPitchesNow();
-    clearInterval(this.intervalId);
+    if (this.intervalId !== undefined) clearRequestInterval(this.intervalId);
+    this.intervalId = undefined;
     this.cursor = -1;
-    this.onSubbeat(-1);
-    this.isPlaying = false;
-    this.intervalId = 0;
+    this._playing = false;
   }
 
   async clearAllActivations() {
-    for (const subBeatActivations of this.activations) {
+    for (const subBeatActivations of this._activations) {
       for (const activation of subBeatActivations) {
         if (activation.active) this.toggleActivation(activation);
       }
@@ -261,11 +437,42 @@ export class Sequencer {
   }
 
   inSecs(dur: number) {
-    return (60 / (this.tempo / this.subBeatsPerBeat)) * dur;
+    const r = (60 / (this._tempo / this.subBeatsPerBeat)) * dur;
+    return r;
   }
 
   inBeats(secs: number) {
-    const r = secs / (60 / (this.tempo / this.subBeatsPerBeat));
+    const r = Math.floor(secs / (60 / (this._tempo / this.subBeatsPerBeat)));
     return r;
+  }
+
+  async toggle() {
+    if (!this.isPlaying()) {
+      // check if we are starting playing for the first time
+      if (!this.isConnected()) {
+        await this.onAudioContextStart();
+      }
+
+      await this.play();
+    } else {
+      await this.stop();
+    }
+  }
+
+  playSilence() {
+    silence.play();
+  };
+
+  async onAudioContextStart() {
+    this.playSilence(); // a hack to get iPads to allow sequenced sounds through
+    const reverb = new Reverb(0.6);
+    const compressor = new Compressor(-0.1, 4);
+    const gain = new Gain(0.7);
+
+    await this.connect(gain);
+    toneConnect(gain, reverb);
+    toneConnect(gain, compressor);
+    reverb.toDestination();
+    compressor.toDestination();
   }
 }

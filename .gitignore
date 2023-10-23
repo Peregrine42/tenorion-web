@@ -40,3 +40,6 @@
 !/app/assets/builds/.keep
 
 node_modules
+
+midi/*
+!midi/.gitkeep

@@ -1,22 +1,25 @@
 {
   "name": "app",
   "private": "true",
+  "type": "module",
   "scripts": {
-    "build": "node esbuild.mjs"
+    "build": "node scripts/esbuild.mjs",
+    "watch": "watchexec -r npm run build",
+    "start": "bundle exec rails s -b 0.0.0.0"
   },
   "dependencies": {
-    "@fortawesome/fontawesome-free": "^6.4.2",
-    "@fortawesome/fontawesome-svg-core": "^6.4.2",
-    "@fortawesome/free-brands-svg-icons": "^6.4.2",
-    "@fortawesome/free-solid-svg-icons": "^6.4.2",
     "@juggle/resize-observer": "^3.4.0",
+    "@react-hookz/web": "^23.1.0",
+    "@uidotdev/usehooks": "^2.4.0",
     "bootstrap": "^5.3.2",
     "esbuild-sass-plugin": "^2.16.0",
     "howler": "^2.2.4",
     "lodash": "^4.17.21",
+    "pojo-observer": "^1.1.9",
     "postcss": "^8.4.31",
     "postcss-copy-assets": "^0.3.1",
     "react": "^18.2.0",
+    "react-bootstrap-icons": "^1.10.3",
     "react-dom": "^18.2.0",
     "react-use-measure": "^2.1.1",
     "smplr": "^0.11.1",
@@ -24,10 +27,13 @@
     "typescript": "^5.2.2"
   },
   "devDependencies": {
+    "@fullhuman/postcss-purgecss": "^5.0.0",
     "@types/howler": "^2.2.10",
     "@types/lodash": "^4.14.199",
+    "@types/node": "^20.8.7",
     "@types/react": "^18.2.28",
     "@types/react-dom": "^18.2.13",
-    "esbuild": "^0.19.4"
+    "esbuild": "^0.19.4",
+    "midi-writer-js": "^3.1.1"
   }
 }

@@ -15,11 +15,11 @@ bundle install
 rails s
 ```
 
-To build the frontend JS assets:
+To build the frontend JS assets (and watch those assets for changes saved to disk):
 
 ```
 npm install
-npm run build -- --watch
+npm run watch
 ```
 
 ## Thanks

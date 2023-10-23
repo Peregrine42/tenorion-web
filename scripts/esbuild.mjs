@@ -1,22 +1,32 @@
 import esbuild from "esbuild";
 import { sassPlugin } from "esbuild-sass-plugin";
-import postcss from 'postcss';
-import copyAssets from 'postcss-copy-assets';
+import postcss from "postcss";
+import copyAssets from "postcss-copy-assets";
+import purgecss from "@fullhuman/postcss-purgecss";
 
 // Generate CSS/JS Builds
 esbuild
   .build({
-    inject: ["shim.js"],
+    inject: ["shims/tone_js_shim.js"],
     entryPoints: [
       "app/assets/stylesheets/application.scss",
       "app/javascript/entrypoints/*.tsx",
     ],
     outdir: "public/assets",
+    format: "iife",
     bundle: true,
     plugins: [
       sassPlugin({
         async transform(source, resolveDir, filePath) {
-          const { css } = await postcss()
+          const { css } = await postcss([
+            purgecss({
+              content: ["app/javascript/**/*.tsx", "app/assets/stylesheets/*.scss", "app/views/**/*.html.erb"],
+              fontFace: true,
+              safelist: [
+                "fa-play", "fa-pause","fa-solid",
+              ]
+            }),
+          ])
             .use(copyAssets({ base: `public` }))
             .process(source, {
               from: filePath,

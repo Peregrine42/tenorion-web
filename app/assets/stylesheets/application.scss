@@ -1,31 +1,13 @@
 @import "../../../node_modules/bootstrap/scss/bootstrap";
 
-$fa-font-path: "../../../node_modules/@fortawesome/fontawesome-free/webfonts";
-@import "../../../node_modules/@fortawesome/fontawesome-free/scss/fontawesome";
-@import "../../../node_modules/@fortawesome/fontawesome-free/scss/regular";
-@import "../../../node_modules/@fortawesome/fontawesome-free/scss/solid";
-@import "../../../node_modules/@fortawesome/fontawesome-free/scss/brands";
-@import "../../../node_modules/@fortawesome/fontawesome-svg-core/styles.css";
-
 .full-height {
   font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-  min-height: 100dvh;
   flex: 1;
   background-color: rgb(234, 234, 234);
-  overflow-y: hidden;
-}
-
-.border-cell {
-  max-width: 10px;
-  max-height: 10px;
 }
 
 .stage {
-  border-radius: 10px;
   background-color: rgb(244, 244, 244);
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .drop-shadow {
@@ -33,28 +15,64 @@ $fa-font-path: "../../../node_modules/@fortawesome/fontawesome-free/webfonts";
 }
 
 .play-button {
-  min-width: 50px;
-  min-height: 50px;
-
   max-width: 50px;
   max-height: 50px;
+  width: 100%;
+  padding: 0.2rem;
 }
 
 .reset-tempo-button {
   min-width: 150px;
-
   max-width: 150px;
+  padding: 0.2rem;
+  font-size: 100%;
 }
 
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.reset-button {
+  font-size: 100%;
 }
 
-.spin {
-  animation: spin 4s linear infinite;
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+.ar-1-1 {
+  aspect-ratio: 1 / 1;
+  background: white;
+  width: 85vh;
+  height: 85vw;
+  max-width: 85vw;
+  max-height: 85vh;
+  margin: 0 auto;
+  align-self: center
+}
+
+.header {
+  min-height: 8vh;
+  max-height: 8vh;
+  padding-top: 0.5vw;
+  padding-bottom: 0.5vw;
+}
+
+.center {
+  display: flex;
+  min-height: 85vh;
+  max-height: 85vh;
+}
+
+.divider {
+  min-height: 1vh;
+  max-height: 1vh;
+}
+
+.footer-elements {
+  min-height: 4vh;
+  max-height: 4vh;
+}
+
+.footer {
+  min-width: 98vw;
+  max-width: 98vw;
 }
