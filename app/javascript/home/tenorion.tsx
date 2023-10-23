@@ -434,7 +434,7 @@ const Tenorion = ({}: {}) => {
           return v;
         });
       }, (60 * 1000) / ((tempoOverride || tempo) / basePartsPerBeat));
-      setTempoIntervalId(id);
+      // setTempoIntervalId(id);
     }
   };
 
