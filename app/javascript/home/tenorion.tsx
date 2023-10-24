@@ -16,10 +16,9 @@ import {
 } from "react-bootstrap-icons";
 
 import { forRange } from "./utils";
-import { Pitch, pendingInstruments } from "./pitch";
+import { pendingInstruments } from "./pitch";
 import { starterPattern } from "./starterPattern";
 import { Sequencer } from "./sequencer";
-import { Reverb, connect as toneConnect, Compressor, Gain } from "tone";
 const basePitchesCount = 16;
 const baseBeatsCount = 16;
 const baseTempo = 108;
@@ -224,7 +223,7 @@ const Tenorion = ({}: {}) => {
   useEffect(() => {
     resizeGrid().catch((e) => console.error(e));
   }, [
-    sequencer.getActivations(),
+    sequencer.activationsChanged(),
     width,
     height,
     sequencer.isSetUp(),
@@ -282,18 +281,6 @@ const Tenorion = ({}: {}) => {
       setStarterGridActivations(acts);
     }
   };
-
-  const clearGridActivations = useCallback(async () => {
-    const g: boolean[][] = [];
-    await forRange(0, sequencer.getTotalSubBeats(), async (i) => {
-      const current: boolean[] = [];
-      g.push(current);
-      await forRange(0, sequencer.getTotalPitches(), async (j) => {
-        current.push(false);
-      });
-    });
-    return g;
-  }, [sequencer.getTotalSubBeats(), sequencer.getTotalPitches()]);
 
   const keyHandler = useCallback(async (e: KeyboardEvent) => {
     if (e.key === " ") {
@@ -385,7 +372,7 @@ const Tenorion = ({}: {}) => {
     (i: number, j: number) => {
       return sequencer.getActivations()[i][j].active;
     },
-    [sequencer.getActivations()]
+    [sequencer.activationsChanged()]
   );
 
   const setActivation = useCallback(
@@ -404,7 +391,7 @@ const Tenorion = ({}: {}) => {
       if (opts?.store)
         localStorage.setItem("grid", toActivationsString(newActs));
     },
-    [sequencer.getActivations()]
+    [sequencer.activationsChanged()]
   );
 
   const getCells = useCallback(
@@ -438,13 +425,12 @@ const Tenorion = ({}: {}) => {
       return cells;
     },
     [
-      sequencer.getActivations(),
+      sequencer.activationsChanged(),
       width,
       height,
       sequencer.getTotalPitches(),
       sequencer.getTotalSubBeats(),
       sequencer.getCursor(),
-      sequencer.getActivations(),
       windowWidth,
       windowHeight,
       dragging,
@@ -528,7 +514,7 @@ const Tenorion = ({}: {}) => {
               <span style={{ fontSize: "1.3rem" }}>
                 <ClockFill />
               </span>
-              &nbsp; {sequencer.getTempo()} bpm
+              &nbsp; {uiTempo} bpm
             </span>
           </button>
         </div>
@@ -585,7 +571,6 @@ const Tenorion = ({}: {}) => {
           onTouchStart={useCallback(
             async (e: React.TouchEvent<SVGSVGElement>) => {
               const grid = await setupGridDims();
-              console.log(grid, width, height);
               const coords = await getCellCoordsFromTouchEvent(grid, e);
               if (coords === null) return;
               const { row, column } = coords;

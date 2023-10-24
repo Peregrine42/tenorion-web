@@ -6,7 +6,6 @@ import {
   Channel as ToneChannel,
   ToneAudioNode,
   Gain,
-  Compressor,
   Reverb,
 } from "tone";
 import { clearRequestInterval, requestInterval } from "./requestInterval";
@@ -17,12 +16,14 @@ export type InstrumentPitch = {
   format: string;
   gain?: number;
   offset?: number;
+  visible?: boolean;
 };
 
 export type Instrument = {
   name: string;
   pitches: InstrumentPitch[];
   continuous: boolean;
+  doubleUp?: boolean;
 };
 
 type ReadyInstrumentPitch = {
@@ -34,8 +35,12 @@ type ReadyInstrumentPitch = {
   loop: {
     value?: number;
   }[];
+  shouldPlay: boolean;
   playing: boolean;
+  fadingOut: boolean;
   samplerName: string;
+  doubleUp: boolean;
+  instrument: Instrument;
 };
 
 type Activation = {
@@ -52,10 +57,16 @@ type Playing = {
 
 type Note = {
   startIndex: number;
-  endIndex: number;
+  stopIndex: number;
   duration: number;
   pitch: ReadyInstrumentPitch;
+  original: boolean;
 };
+
+const doubleUpPitchName = (pitch: ReadyInstrumentPitch) =>
+  `${pitch.instrument.name}-${pitch.settings.name[0]}${
+    parseInt(pitch.settings.name.slice(1)) + 1
+  }`;
 
 export class SampleBank {
   samplers: Record<string, TonePlayer>;
@@ -82,7 +93,7 @@ export class SampleBank {
     if (continuous) {
       sampler.loop = true;
       sampler.loopStart = 1;
-      sampler.loopEnd = 2;
+      sampler.loopEnd = 3;
     }
 
     this.samplers[name] = sampler;
@@ -97,13 +108,14 @@ silence.src =
 
 const _notes: Note[] = [];
 const _playing: Playing[] = [];
+const _activations: Activation[][] = [];
 
 export class Sequencer {
-  _activations: Activation[][] = [];
   _totalSubBeats = 0;
   _totalPitches = 0;
   pending: Record<string, Instrument> = {};
   pitches: Record<string, ReadyInstrumentPitch> = {};
+  _activationsChanged: Record<string, string> = {};
   _tempo = 108;
   cursor = -1;
   subBeatsPerBeat = 0.25;
@@ -137,11 +149,15 @@ export class Sequencer {
   }
 
   getActivations() {
-    return this._activations;
+    return _activations;
   }
 
   getCursor() {
     return this.cursor;
+  }
+
+  activationsChanged() {
+    return this._activationsChanged;
   }
 
   async setup(
@@ -153,34 +169,43 @@ export class Sequencer {
     let index = 0;
     for (const inst of pendingInstruments) {
       for (const pitch of inst.pitches) {
+        const samplerName = `${inst.name}-${pitch.name}`;
         await sampleBank.setupNewSampler(
-          `${inst.name}-${pitch.name}`,
+          samplerName,
           pitch.sample,
           pitch.gain,
           inst.continuous
         );
 
-        this.pitches[`${inst.name}-${pitch.name}`] = {
+        this.setFadeOutOnSampler(inst.continuous, samplerName);
+
+        const readyPitch: ReadyInstrumentPitch = {
+          shouldPlay: false,
           playing: false,
+          fadingOut: false,
           settings: pitch,
           index,
           continuous: inst.continuous,
-          gain: pitch.gain || 1,
+          gain: pitch.gain || 0,
           offset: pitch.offset || 0,
           loop: [],
           samplerName: `${inst.name}-${pitch.name}`,
+          doubleUp: inst.doubleUp || false,
+          instrument: inst,
         };
 
-        index += 1;
+        this.pitches[`${inst.name}-${pitch.name}`] = readyPitch;
+
+        if (pitch.visible) index += 1;
       }
     }
     this._totalPitches = index;
 
     await forRange(0, totalSubBeats, async (subBeat) => {
       const subBeatColumn: Activation[] = [];
-      this._activations.push(subBeatColumn);
+      _activations.push(subBeatColumn);
       for (const inst of pendingInstruments) {
-        for (const pitch of inst.pitches) {
+        for (const pitch of inst.pitches.filter((p) => p.visible)) {
           subBeatColumn.push({
             pitch: this.pitches[`${inst.name}-${pitch.name}`],
             subBeat,
@@ -194,7 +219,7 @@ export class Sequencer {
     for (const subBeatColumn of initialActivations) {
       let j = 0;
       for (const row of subBeatColumn) {
-        const act = this._activations[i][j];
+        const act = _activations[i][j];
         if (row) await this.toggleActivation(act);
         j += 1;
       }
@@ -215,107 +240,203 @@ export class Sequencer {
       activation.active = activationOverride;
     else activation.active = !activation.active;
 
-    const startIndex =
-      activation.subBeat === this._totalSubBeats - 1
-        ? 0
-        : activation.subBeat + 1;
+    this._activationsChanged = {};
 
-    this.filterContinuousNotes(activation.pitch.index);
-    let candidate: null | Activation = null;
-    let looped = false;
-    for (
-      let i = startIndex;
-      looped === false || i < startIndex;
-      i === this._totalSubBeats - 1 ? (i = -1) : (i += 1)
-    ) {
-      if (i === -1) {
-        looped = true;
-        continue;
-      }
-      candidate = this._activations[i][activation.pitch.index];
-      if (!candidate.active) {
-        break;
+    this.reStateWhereNotesAreAtActivationPitch(activation);
+  }
+
+  reStateWhereNotesAreAtActivationPitch(activation: Activation) {
+    if (!activation.pitch.continuous) {
+      if (activation.active) {
+        _notes.push({
+          duration: 1,
+          startIndex: activation.subBeat,
+          stopIndex:
+            activation.subBeat === this._totalSubBeats - 1
+              ? 0
+              : activation.subBeat + 1,
+          pitch: activation.pitch,
+          original: true,
+        });
       } else {
-        candidate = null;
+        this.filterActivationFromNotes(activation);
       }
-    }
-
-    if (candidate === null) {
-      _notes.push({
-        duration: this._totalSubBeats,
-        startIndex: 0,
-        endIndex: -1,
-        pitch: activation.pitch,
-      });
       return;
     }
 
-    const sIndex =
-      candidate.subBeat === this._totalSubBeats - 1 ? 0 : candidate.subBeat + 1;
-    let c = candidate;
-    let foundNote = false;
-    let dur = 0;
-    let starting = -1;
-    let ending = -1;
-    let l = false;
-    for (
-      let i = sIndex;
-      l === false || i < sIndex;
-      i === this._totalSubBeats - 1 ? (i = -1) : (i += 1)
-    ) {
-      if (i === -1) {
-        l = true;
-        continue;
-      }
-      c = this._activations[i][activation.pitch.index];
-      if (c.active) {
-        foundNote = true;
-        if (starting === -1) starting = c.subBeat;
-      } else {
-        if (starting > -1) {
-          _notes.push({
-            duration: dur,
-            startIndex: starting,
-            endIndex: ending,
-            pitch: c.pitch,
-          });
-          dur = 0;
-          starting = -1;
-          ending = -1;
+    this.filterNotes(activation.pitch);
+
+    const newNotes: Note[] = (() => {
+      const _newNotes: Note[] = [];
+
+      const startIndex =
+        activation.subBeat === this._totalSubBeats - 1
+          ? 0
+          : activation.subBeat + 1;
+
+      let candidate: null | Activation = null;
+      let looped = false;
+      for (
+        let i = startIndex;
+        looped === false || i < startIndex;
+        i === this._totalSubBeats - 1 ? (i = -1) : (i += 1)
+      ) {
+        if (i === -1) {
+          looped = true;
+          continue;
         }
-        foundNote = false;
+        candidate = _activations[i][activation.pitch.index];
+        if (!candidate.active) {
+          break;
+        } else {
+          candidate = null;
+        }
       }
-      ending = c.subBeat;
 
-      if (foundNote) dur += 1;
-    }
+      if (candidate === null) {
+        _newNotes.push({
+          duration: this._totalSubBeats,
+          startIndex: 0,
+          stopIndex: -2,
+          pitch: activation.pitch,
+          original: true,
+        });
+        return _newNotes;
+      }
 
-    if (starting > -1) {
-      _notes.push({
-        duration: dur,
-        startIndex: starting,
-        endIndex: c.subBeat,
-        pitch: c.pitch,
-      });
-      dur = 0;
-      starting = -1;
+      const sIndex =
+        candidate.subBeat === this._totalSubBeats - 1
+          ? 0
+          : candidate.subBeat + 1;
+      let c = candidate;
+      let foundNote = false;
+      let dur = 0;
+      let starting = -1;
+      let ending = -1;
+      let l = false;
+      for (
+        let i = sIndex;
+        l === false || i < sIndex;
+        i === this._totalSubBeats - 1 ? (i = -1) : (i += 1)
+      ) {
+        if (i === -1) {
+          l = true;
+          continue;
+        }
+        c = _activations[i][activation.pitch.index];
+        if (c.active) {
+          foundNote = true;
+          if (starting === -1) starting = c.subBeat;
+        } else {
+          if (starting > -1) {
+            _newNotes.push({
+              duration: dur,
+              startIndex: starting,
+              stopIndex: ending === this._totalSubBeats - 1 ? 0 : ending + 1,
+              pitch: c.pitch,
+              original: true,
+            });
+            dur = 0;
+            starting = -1;
+            ending = -1;
+          }
+          foundNote = false;
+        }
+        ending = c.subBeat;
+
+        if (foundNote) dur += 1;
+      }
+
+      if (starting > -1) {
+        _newNotes.push({
+          duration: dur,
+          startIndex: starting,
+          stopIndex: c.subBeat === this._totalSubBeats - 1 ? 0 : c.subBeat + 1,
+          pitch: c.pitch,
+          original: true,
+        });
+        dur = 0;
+        starting = -1;
+      }
+      return _newNotes;
+    })();
+
+    for (const note of newNotes) {
+      _notes.push(note);
+      // if (note.pitch.doubleUp) {
+      //   const newPitchName = transposePitchName(note.pitch);
+      //   const extraPitch = this.pitches[newPitchName];
+      //   if (extraPitch) {
+      //     const extraNote = _.cloneDeep(note);
+      //     extraNote.original = false;
+      //     extraNote.pitch = extraPitch;
+      //     _notes.push(extraNote);
+      //   }
+      // }
     }
   }
 
-  filterContinuousNotes(index: number) {
-    let i = _notes.findIndex((n) => n.pitch.index === index);
+  filterNotes(pitch: ReadyInstrumentPitch) {
+    // let doubleUpI = _notes.findIndex((n) => !n.original);
+    // while (doubleUpI > -1) {
+    //   _notes.splice(doubleUpI, 1);
+    //   doubleUpI = _notes.findIndex((n) => !n.original);
+    // }
+
+    let samePitchI = _notes.findIndex(
+      (n) => n.pitch.samplerName === pitch.samplerName
+    );
+    while (samePitchI > -1) {
+      _notes.splice(samePitchI, 1);
+      samePitchI = _notes.findIndex(
+        (n) => n.pitch.samplerName === pitch.samplerName
+      );
+    }
+  }
+
+  filterActivationFromNotes(activation: Activation) {
+    let i = _notes.findIndex(
+      (n) =>
+        n.startIndex === activation.subBeat &&
+        n.pitch.samplerName === activation.pitch.samplerName
+    );
     while (i > -1) {
       _notes.splice(i, 1);
-      i = _notes.findIndex((n) => n.pitch.index === index);
+      i = _notes.findIndex(
+        (n) =>
+          n.startIndex === activation.subBeat &&
+          n.pitch.samplerName === activation.pitch.samplerName
+      );
     }
   }
 
   async tick(starting = false) {
     this._playing = true;
     this.cursor += 1;
+
+    this.stopPendingPitches();
     if (this.cursor >= this._totalSubBeats) this.cursor = 0;
-    await this.playPitchesStartingNow(starting);
-    await this.stopPitchesEndingNext();
+    await this.updatePlayingPitches();
+
+    for (const pl of _playing) {
+      if (pl.note.pitch.playing) pl.subBeatsPlayed += 1;
+    }
+
+    await this.startPitchesStartingNow(starting);
+    await this.updatePlayingPitches();
+  }
+
+  stopPendingPitches() {
+    for (const p of Object.values(this.pitches)) {
+      if (p.fadingOut) {
+        this.stopPlayingSampler(p.samplerName);
+        if (p.doubleUp) {
+          this.stopPlayingSampler(doubleUpPitchName(p));
+        }
+        p.fadingOut = false;
+        p.playing = false;
+      }
+    }
   }
 
   async play() {
@@ -334,68 +455,110 @@ export class Sequencer {
     toneConnect(sampleBank.mainOutput, node);
   }
 
-  async stopPitchesEndingNext(): Promise<void> {
-    const prevCursor =
-      this.cursor === 0 ? this._totalSubBeats - 1 : this.cursor - 1;
-
-    const subBeatNotes = _notes.filter(
-      (n) => n.endIndex === prevCursor && n.duration !== this._totalSubBeats
+  async updatePlayingPitches(): Promise<void> {
+    const planningToStop = _playing.filter(
+      (pl) => pl.subBeatsPlayed >= pl.endDueAfter - 2
     );
 
-    for (const note of subBeatNotes) {
-      const playingNotes = _playing.filter((p) => p.note.pitch === note.pitch);
-      for (const playing of playingNotes) {
-        playing.note.pitch.playing = false;
-        const sampler = sampleBank.samplers[playing.note.pitch.samplerName];
-        if (playing.note.pitch.continuous) sampler.stop();
+    for (const playing of planningToStop) {
+      playing.note.pitch.shouldPlay = false;
+    }
+
+    let targ = _playing.findIndex((p) => !p.note.pitch.shouldPlay);
+    while (targ > -1) {
+      _playing.splice(targ, 1);
+      targ = _playing.findIndex((p) => !p.note.pitch.shouldPlay);
+    }
+
+    for (const pitch of Object.values(this.pitches)) {
+      if (!pitch.shouldPlay && pitch.playing) {
+        this.setFadeOutOnSampler(pitch.continuous, pitch.samplerName);
+
+        if (pitch.doubleUp) {
+          this.setFadeOutOnSampler(pitch.continuous, doubleUpPitchName(pitch));
+        }
+
+        pitch.fadingOut = true;
       }
     }
   }
 
-  async playPitchesStartingNow(starting = false): Promise<void> {
-    let extra: Note[] = [];
+  async startPitchesStartingNow(initial = false): Promise<void> {
+    const subBeatNotes = _notes.filter(
+      (n) =>
+        (n.startIndex === this.cursor && n.duration !== this._totalSubBeats) ||
+        (n.duration === this._totalSubBeats && !n.pitch.shouldPlay)
+    );
 
-    if (starting) {
-      extra = _notes
-        .filter((n) => n.startIndex > this.cursor && n.endIndex < n.startIndex)
-        .map((n) => {
-          return {
-            duration: n.duration,
-            pitch: n.pitch,
-            startIndex: n.startIndex,
-            endIndex: n.endIndex,
-          };
-        });
-    }
-
-    const subBeatNotes = _notes
-      .filter(
-        (n) =>
-          (n.startIndex === this.cursor &&
-            n.duration !== this._totalSubBeats) ||
-          (n.duration === this._totalSubBeats && !n.pitch.playing)
-      )
-      .map((n) => {
-        return {
-          duration: n.duration,
-          pitch: n.pitch,
-          startIndex: n.startIndex,
-          endIndex: n.endIndex,
-        };
-      });
-
-    const all = [...subBeatNotes, ...extra];
-    for (const note of all) {
-      if (note.pitch.continuous) note.pitch.playing = true;
-      const dur = note.duration;
-      const sampler = sampleBank.samplers[note.pitch.samplerName];
-      sampler.start();
+    for (const note of subBeatNotes) {
+      note.pitch.shouldPlay = true;
       _playing.push({
-        endDueAfter: dur,
+        endDueAfter: note.duration,
         note,
         subBeatsPlayed: 1,
       });
+
+      // if (note.pitch.doubleUp) {
+      //   _playing.push({
+      //     endDueAfter: note.duration,
+      //     note,
+      //     subBeatsPlayed: 1,
+      //     double: true,
+      //   });
+      // }
+
+      const sampler = sampleBank.samplers[note.pitch.samplerName];
+      this.playSampler(note, sampler);
+
+      if (note.pitch.doubleUp) {
+        this.playSampler(
+          note,
+          sampleBank.samplers[doubleUpPitchName(note.pitch)]
+        );
+      }
     }
+
+    // if (initial) {
+    //   const notesUnderCursor = _notes.filter(
+    //     (n) => n.startIndex <= this.cursor && n.stopIndex > this.cursor
+    //   );
+    //   for (const pitch of Object.values(this.pitches)) {
+    //     const noteIsUnderCursor = !!notesUnderCursor.find(
+    //       (n) => n.pitch.samplerName === pitch.samplerName
+    //     );
+    //     pitch.shouldPlay = noteIsUnderCursor;
+    //   }
+    // }
+  }
+
+  playSampler(note: Note, sampler: TonePlayer) {
+    if (note.pitch.continuous)
+      sampler.set({
+        fadeIn: this.inSecs(0.2),
+      });
+    if (note.pitch.gain) {
+      sampler.set({
+        volume: note.pitch.gain,
+      });
+    }
+    note.pitch.playing = true;
+    sampler.start();
+  }
+
+  setFadeOutOnSampler(continuous: boolean, samplerName: string) {
+    const sampler = sampleBank.samplers[samplerName];
+    let fade = 0.1;
+    if (continuous) {
+      fade = 0.6;
+    }
+    sampler.set({
+      fadeOut: fade,
+    });
+  }
+
+  stopPlayingSampler(samplerName: string) {
+    const sampler = sampleBank.samplers[samplerName];
+    sampler.stop();
   }
 
   async stopPlayingPitchesNow(): Promise<void> {
@@ -405,9 +568,11 @@ export class Sequencer {
           cancelAnimationFrame(loop.value);
           p.note.pitch.loop = [];
         }
-      const sampler = sampleBank.samplers[p.note.pitch.samplerName];
-      sampler.stop();
+      p.note.pitch.shouldPlay = false;
     }
+
+    await this.updatePlayingPitches();
+    this.stopPendingPitches();
 
     while (_playing.length) {
       _playing.splice(0, 1);
@@ -429,7 +594,7 @@ export class Sequencer {
   }
 
   async clearAllActivations() {
-    for (const subBeatActivations of this._activations) {
+    for (const subBeatActivations of _activations) {
       for (const activation of subBeatActivations) {
         if (activation.active) this.toggleActivation(activation);
       }
@@ -461,18 +626,19 @@ export class Sequencer {
 
   playSilence() {
     silence.play();
-  };
+  }
 
   async onAudioContextStart() {
     this.playSilence(); // a hack to get iPads to allow sequenced sounds through
-    const reverb = new Reverb(0.6);
-    const compressor = new Compressor(-0.1, 4);
-    const gain = new Gain(0.7);
+    const reverb = new Reverb(2);
+    // const compressor = new Compressor(-0.1, 4);
+    const gain = new Gain(7, "decibels");
 
     await this.connect(gain);
     toneConnect(gain, reverb);
-    toneConnect(gain, compressor);
+    // toneConnect(gain, compressor);
     reverb.toDestination();
-    compressor.toDestination();
+    gain.toDestination();
+    // compressor.toDestination();
   }
 }
