@@ -8,13 +8,3 @@ export const forRange = async (
     if (stop) return;
   }
 };
-
-export function* take<T>(generator: Generator<T>, count: number) {
-  for (let i = 0; i < count; i++) {
-    const result = generator.next();
-    if (result.done) {
-      break;
-    }
-    yield result.value;
-  }
-}

@@ -1,4 +1,10 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, {
+  useEffect,
+  useState,
+  useRef,
+  useCallback,
+  ReactNode,
+} from "react";
 import { ResizeObserver } from "@juggle/resize-observer";
 if (!window.ResizeObserver) {
   window.ResizeObserver = ResizeObserver;
@@ -7,6 +13,7 @@ import { useMeasure, useWindowSize } from "@react-hookz/web";
 import _ from "lodash";
 
 import useObserver = require("pojo-observer");
+import { useInterpolation } from "react-use-interpolation";
 
 import {
   ClockFill,
@@ -19,6 +26,8 @@ import { forRange } from "./utils";
 import { pendingInstruments } from "./pitch";
 import { starterPattern } from "./starterPattern";
 import { Sequencer } from "./sequencer";
+import { initialize } from "esbuild";
+import { requestTimeout } from "./requestInterval";
 const basePitchesCount = 16;
 const baseBeatsCount = 16;
 const baseTempo = 108;
@@ -53,7 +62,7 @@ const colorFor = (i: number, j: number, playing: boolean): string => {
     b = 252;
   }
 
-  if (j > 4 && j < 11) r -= 20;
+  if (!(j > 4 && j < 11)) r += 20;
 
   return hintUnderCursor(r, g, b, playing);
 };
@@ -148,53 +157,76 @@ const TenorionCell = ({
   setActive: (v: boolean) => void;
   isUnderCursor: boolean;
 }) => {
-  const [firstActive, setFirstActive] = useState(active);
+  const initDuration = 0.6;
+  const activeDuration = 0.4;
+  const targetActiveOpacity = 0.6;
+  const [inited, setInited] = useState(false);
+  const [baseOpacity, setOpacity, _setDuration] = useInterpolation<number>(
+    0,
+    initDuration,
+    "ease-in-out"
+  );
+  const [activeOpacity, setActiveOpacity, _setActiveDuration] =
+    useInterpolation<number>(0, activeDuration, "ease-in-out");
+
+  const entryDelay = i * j * 0.004;
 
   useEffect(() => {
-    if (!firstActive && active) setFirstActive(true);
-  }, [active, firstActive]);
+    requestTimeout(() => {
+      setOpacity(1);
 
-  const entryDelay = i * j * 0.001;
+      requestTimeout(() => {
+        setInited(true);
+      }, initDuration);
+    }, entryDelay * 1000);
+  }, []);
+
+  useEffect(() => {
+    if (inited)
+      if (active) {
+        setActiveOpacity(targetActiveOpacity);
+      } else {
+        setActiveOpacity(0);
+      }
+  }, [active, inited]);
 
   return (
     <g
-      onMouseDown={(e: React.MouseEvent) => {
+      onMouseDown={(_e: React.MouseEvent) => {
         if (hasTouch()) return;
         onDown(!active);
         setActive(!active);
       }}
-      onMouseOver={(e) => {
+      onMouseOver={(_e) => {
         !hasTouch() && pointerDragging && setActive(pointerActionActivating);
       }}
       onMouseUp={() => !hasTouch() && onUp()}
     >
       <rect
         style={{
-          animation: "0.4s opacity forwards",
-          animationDelay: `${entryDelay}s`,
           touchAction: "none",
         }}
-        opacity="0"
+        opacity={baseOpacity}
         className="cell"
-        rx={0.005}
         fill={colorFor(i, j, isUnderCursor)}
-        x={x + 1}
-        y={y + 1}
-        width={w * 0.96}
-        height={h * 0.96}
+        rx={5}
+        stroke="white"
+        x={x}
+        y={y}
+        width={w}
+        height={h}
+        strokeWidth={2}
       />
       <rect
         x={x}
         y={y}
-        rx={0.0005}
-        width={w * 0.96}
-        height={h * 0.96}
+        rx={5}
+        opacity={!inited ? baseOpacity : activeOpacity}
+        width={w}
+        height={h}
+        fill="black"
+        stroke="black"
         style={{
-          animation: active
-            ? "0.3s some-opacity forwards"
-            : "0.2s no-opacity forwards",
-          fill: firstActive ? "black" : "white",
-          opacity: 0.4,
           pointerEvents: "none",
         }}
       />
@@ -209,6 +241,7 @@ const Tenorion = ({}: {}) => {
   const pointerDraggingRef = useRef<boolean>(dragging);
   const [dragActivating, setDragActivating] = useState(false);
   const [uiTempo, setUiTempo] = useState<number>(0);
+  const [uiCursor, setUiCursor] = useState<number>(-1);
 
   let width: null | number = null;
   let height: null | number = null;
@@ -221,7 +254,10 @@ const Tenorion = ({}: {}) => {
 
   // handles resizing of the viewport, and therefore the grid
   useEffect(() => {
+    // const init = width === null || width === 0;
+    // console.log(init);
     resizeGrid().catch((e) => console.error(e));
+    setUiCursor(sequencer.getCursor());
   }, [
     sequencer.activationsChanged(),
     width,
@@ -238,10 +274,8 @@ const Tenorion = ({}: {}) => {
   }, [dragging]);
 
   useEffect(() => {
-    setUiTempo(sequencer.getTempo())
-  }, [sequencer.getTempo()])
-
-
+    setUiTempo(sequencer.getTempo());
+  }, [sequencer.getTempo()]);
 
   const toActivationsString = (activations: boolean[][]): string => {
     const acts: boolean[][] = [];
@@ -396,6 +430,8 @@ const Tenorion = ({}: {}) => {
 
   const getCells = useCallback(
     (grid: Grid) => {
+      const uiCursor = sequencer.getCursor();
+
       const cells: CellData[][] = [];
 
       for (let row = 0; row < sequencer.getTotalPitches(); row += 1) {
@@ -410,7 +446,7 @@ const Tenorion = ({}: {}) => {
             i: row,
             j: column,
             active: sequencer.getActivations()[row][column].active,
-            isUnderCursor: sequencer.getCursor() === row,
+            isUnderCursor: uiCursor === row,
             key: `${row}-${column}`,
             cellX: grid[row][column].x,
             cellY: grid[row][column].y,
@@ -475,7 +511,7 @@ const Tenorion = ({}: {}) => {
   const onPlay = useCallback(
     async (e: Event) => {
       (e.target as HTMLButtonElement).blur();
-      await sequencer.toggle()
+      await sequencer.toggle();
     },
     [sequencer.isPlaying(), sequencer.isConnected()]
   );
@@ -494,7 +530,7 @@ const Tenorion = ({}: {}) => {
             max={180}
             onChange={(e) => {
               const newTempo = parseInt(e.target.value);
-              setUiTempo(newTempo)
+              setUiTempo(newTempo);
               sequencer.setTempo(newTempo);
               localStorage.setItem("tempo", newTempo.toString());
             }}
@@ -607,11 +643,11 @@ const Tenorion = ({}: {}) => {
 
           @keyframes some-opacity {
             0% {opacity: 0}
-            100% {opacity: 0.4}
+            100% {opacity: 0.7}
           }
 
           @keyframes no-opacity {
-            0% {opacity: 0.4}
+            0% {opacity: 0.7}
             100% {opacity: 0}
           }
         `}
@@ -639,6 +675,57 @@ const Tenorion = ({}: {}) => {
                 });
               })
             )}
+            {(() => {
+              const noteHints: ReactNode[] = [];
+              const w = width;
+              const h = height;
+
+              if (w && h)
+                for (const note of sequencer.getNotes()) {
+                  if (note.pitch.settings.visible) {
+                    const active =
+                      uiCursor > -1 &&
+                      (note.stopIndex > note.startIndex
+                        ? between(uiCursor, note.startIndex, note.stopIndex)
+                        : !between(
+                            -uiCursor,
+                            -note.startIndex,
+                            -note.stopIndex
+                          ));
+
+                    const x =
+                      (w / sequencer.getTotalSubBeats() || 1) * note.startIndex;
+                    const y =
+                      (h / sequencer.getTotalPitches() || 1) *
+                        note.pitch.index +
+                      1;
+                    const wid =
+                      (w / sequencer.getTotalSubBeats()) * note.duration - 2;
+                    const hei = h / sequencer.getTotalPitches();
+
+                    noteHints.push(<Hint {...{ x, y, wid, hei, active }} />);
+
+                    if (note.startIndex > note.stopIndex) {
+                      const x = 0;
+                      const y =
+                        (h / sequencer.getTotalPitches() || 1) *
+                          note.pitch.index +
+                        1;
+                      const wid =
+                        (w / sequencer.getTotalSubBeats()) *
+                        (note.duration -
+                          (sequencer.getTotalSubBeats() - note.startIndex));
+                      const hei = h / sequencer.getTotalPitches();
+
+                      noteHints.push(
+                        <Hint {...{ x: x - 5, y, wid: wid + 5, hei, active }} />
+                      );
+                    }
+                  }
+                }
+
+              return noteHints;
+            })()}
           </g>
         </svg>
       </div>
@@ -652,3 +739,53 @@ const hasTouch = () => {
 };
 
 export default Tenorion;
+
+function between(x: number, left: number, right: number) {
+  return x >= left && x < right;
+}
+
+function Hint({
+  x,
+  y,
+  wid,
+  hei,
+  active,
+}: {
+  x: number;
+  y: number;
+  wid: number;
+  hei: number;
+  active: boolean;
+}) {
+  const initDuration = 0.6;
+  const [baseOpacity, setOpacity, _setDuration] = useInterpolation<number>(
+    0,
+    initDuration,
+    "ease-in-out"
+  );
+
+  const entryDelay = x * y * 0.001;
+
+  useEffect(() => {
+    requestTimeout(() => {
+      setOpacity(1);
+    }, entryDelay);
+  }, []);
+
+  return (
+    <rect
+      style={{
+        pointerEvents: "none",
+      }}
+      stroke="white"
+      fill={active ? "rgba(184, 184, 184, 0.15)" : "none"}
+      x={x + 2}
+      y={y + 1}
+      width={wid}
+      height={hei}
+      strokeWidth={5}
+      rx={5}
+      opacity={baseOpacity}
+    ></rect>
+  );
+}

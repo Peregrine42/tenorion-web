@@ -1,5 +1,4 @@
 import { Instrument } from "./sequencer";
-import { take } from "./utils";
 
 export type BasePitch = {
   value: string;
@@ -185,92 +184,103 @@ export const pendingInstruments: Instrument[] = [
         format: "m4a",
         name: "C5",
         sample: stringsPitches["C5"],
-        gain: 3
+        gain: -3
       },
       {
         format: "m4a",
         name: "A4",
         sample: stringsPitches["A4"],
-        gain: 3
+        gain: -3
       },
       {
         format: "m4a",
         name: "G4",
         sample: stringsPitches["G4"],
-        gain: 3
+        gain: -3
       },
       {
         format: "m4a",
         name: "E4",
         sample: stringsPitches["E4"],
-        gain: 3
+        gain: -3
       },
       {
         format: "m4a",
         name: "D4",
         sample: stringsPitches["D4"],
-        gain: 3
+        gain: -3
       },
       {
         format: "m4a",
         name: "C4",
         sample: stringsPitches["C4"],
         visible: true,
+        gain: -3
       },
       {
         format: "m4a",
         name: "A3",
         sample: stringsPitches["A3"],
         visible: true,
+        gain: -3
       },
       {
         format: "m4a",
         name: "G3",
         sample: stringsPitches["G3"],
         visible: true,
+        gain: -3
       },
       {
         format: "m4a",
         name: "E3",
         sample: stringsPitches["E3"],
         visible: true,
+        gain: -3
       },
       {
         format: "m4a",
         name: "D3",
         sample: stringsPitches["D3"],
         visible: true,
+        gain: -3
       },
       {
         format: "m4a",
         name: "C3",
         sample: stringsPitches["C3"],
         visible: true,
+        gain: -3
       },
       {
         format: "m4a",
         name: "A2",
         sample: stringsPitches["A2"],
+        gain: -3
       },
       {
         format: "m4a",
         name: "G2",
         sample: stringsPitches["G2"],
+        gain: -3
       },
       {
         format: "m4a",
         name: "E2",
         sample: stringsPitches["E2"],
+        gain: -3
       },
       {
         format: "m4a",
         name: "D2",
         sample: stringsPitches["D2"],
+        gain: -3
       },
       {
         format: "m4a",
         name: "C2",
         sample: stringsPitches["C2"],
+        gain: -3
       },
     ],
   },

@@ -4,9 +4,11 @@ import postcss from "postcss";
 import copyAssets from "postcss-copy-assets";
 import purgecss from "@fullhuman/postcss-purgecss";
 
-// Generate CSS/JS Builds
 esbuild
   .build({
+    define: {
+      'process.env.NODE_ENV': '"production"',
+    },
     inject: ["shims/tone_js_shim.js"],
     entryPoints: [
       "app/assets/stylesheets/application.scss",
@@ -15,6 +17,7 @@ esbuild
     outdir: "public/assets",
     format: "iife",
     bundle: true,
+    sourcemap: "linked",
     plugins: [
       sassPlugin({
         async transform(source, resolveDir, filePath) {

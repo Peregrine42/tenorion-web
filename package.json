@@ -5,7 +5,8 @@
   "scripts": {
     "build": "node scripts/esbuild.mjs",
     "watch": "watchexec -r npm run build",
-    "start": "bundle exec rails s -b 0.0.0.0"
+    "start": "bundle exec rails s -b 0.0.0.0",
+    "source-map-explorer": "source-map-explorer"
   },
   "dependencies": {
     "@juggle/resize-observer": "^3.4.0",
@@ -21,10 +22,12 @@
     "react": "^18.2.0",
     "react-bootstrap-icons": "^1.10.3",
     "react-dom": "^18.2.0",
+    "react-use-interpolation": "^0.1.0",
     "react-use-measure": "^2.1.1",
     "smplr": "^0.11.1",
     "tone": "^14.7.77",
-    "typescript": "^5.2.2"
+    "typescript": "^5.2.2",
+    "use-smooth-count": "^1.0.1"
   },
   "devDependencies": {
     "@fullhuman/postcss-purgecss": "^5.0.0",
@@ -34,6 +37,7 @@
     "@types/react": "^18.2.28",
     "@types/react-dom": "^18.2.13",
     "esbuild": "^0.19.4",
-    "midi-writer-js": "^3.1.1"
+    "midi-writer-js": "^3.1.1",
+    "source-map-explorer": "^2.5.3"
   }
 }

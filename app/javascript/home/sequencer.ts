@@ -1,5 +1,4 @@
-import _ from "lodash";
-import { forRange } from "./utils";
+import _, { range } from "lodash";
 import {
   Player as TonePlayer,
   connect as toneConnect,
@@ -7,6 +6,7 @@ import {
   ToneAudioNode,
   Gain,
   Reverb,
+  Compressor,
 } from "tone";
 import { clearRequestInterval, requestInterval } from "./requestInterval";
 
@@ -23,6 +23,7 @@ export type Instrument = {
   name: string;
   pitches: InstrumentPitch[];
   continuous: boolean;
+  doubleDown?: boolean;
   doubleUp?: boolean;
 };
 
@@ -37,8 +38,8 @@ type ReadyInstrumentPitch = {
   }[];
   shouldPlay: boolean;
   playing: boolean;
-  fadingOut: boolean;
   samplerName: string;
+  doubleDown: boolean;
   doubleUp: boolean;
   instrument: Instrument;
 };
@@ -53,6 +54,7 @@ type Playing = {
   subBeatsPlayed: number;
   endDueAfter: number;
   note: Note;
+  fadingOut: boolean;
 };
 
 type Note = {
@@ -62,6 +64,11 @@ type Note = {
   pitch: ReadyInstrumentPitch;
   original: boolean;
 };
+
+const doubleDownPitchName = (pitch: ReadyInstrumentPitch) =>
+  `${pitch.instrument.name}-${pitch.settings.name[0]}${
+    parseInt(pitch.settings.name.slice(1)) - 1
+  }`;
 
 const doubleUpPitchName = (pitch: ReadyInstrumentPitch) =>
   `${pitch.instrument.name}-${pitch.settings.name[0]}${
@@ -87,8 +94,6 @@ export class SampleBank {
         r(s);
       });
     });
-
-    sampler.volume.value = gain;
 
     if (continuous) {
       sampler.loop = true;
@@ -152,6 +157,10 @@ export class Sequencer {
     return _activations;
   }
 
+  getNotes() {
+    return _notes;
+  }
+
   getCursor() {
     return this.cursor;
   }
@@ -182,7 +191,6 @@ export class Sequencer {
         const readyPitch: ReadyInstrumentPitch = {
           shouldPlay: false,
           playing: false,
-          fadingOut: false,
           settings: pitch,
           index,
           continuous: inst.continuous,
@@ -190,6 +198,7 @@ export class Sequencer {
           offset: pitch.offset || 0,
           loop: [],
           samplerName: `${inst.name}-${pitch.name}`,
+          doubleDown: inst.doubleDown || false,
           doubleUp: inst.doubleUp || false,
           instrument: inst,
         };
@@ -201,7 +210,7 @@ export class Sequencer {
     }
     this._totalPitches = index;
 
-    await forRange(0, totalSubBeats, async (subBeat) => {
+    range(0, totalSubBeats).forEach((subBeat) => {
       const subBeatColumn: Activation[] = [];
       _activations.push(subBeatColumn);
       for (const inst of pendingInstruments) {
@@ -363,16 +372,6 @@ export class Sequencer {
 
     for (const note of newNotes) {
       _notes.push(note);
-      // if (note.pitch.doubleUp) {
-      //   const newPitchName = transposePitchName(note.pitch);
-      //   const extraPitch = this.pitches[newPitchName];
-      //   if (extraPitch) {
-      //     const extraNote = _.cloneDeep(note);
-      //     extraNote.original = false;
-      //     extraNote.pitch = extraPitch;
-      //     _notes.push(extraNote);
-      //   }
-      // }
     }
   }
 
@@ -411,31 +410,41 @@ export class Sequencer {
   }
 
   async tick(starting = false) {
+    this.stopPendingPitches();
+
     this._playing = true;
     this.cursor += 1;
-
-    this.stopPendingPitches();
     if (this.cursor >= this._totalSubBeats) this.cursor = 0;
-    await this.updatePlayingPitches();
+
+    // await this.updatePlayingPitches();
 
     for (const pl of _playing) {
       if (pl.note.pitch.playing) pl.subBeatsPlayed += 1;
     }
 
-    await this.startPitchesStartingNow(starting);
-    await this.updatePlayingPitches();
+    await this.updatePlayingPitches(starting);
+    await this.startPitchesStartingNow();
+    await this.updatePlayingPitches(starting);
   }
 
   stopPendingPitches() {
-    for (const p of Object.values(this.pitches)) {
+    for (const p of _playing) {
       if (p.fadingOut) {
-        this.stopPlayingSampler(p.samplerName);
-        if (p.doubleUp) {
-          this.stopPlayingSampler(doubleUpPitchName(p));
+        this.stopPlayingSampler(p.note.pitch.samplerName);
+        if (p.note.pitch.doubleDown) {
+          this.stopPlayingSampler(doubleDownPitchName(p.note.pitch));
         }
-        p.fadingOut = false;
-        p.playing = false;
+        if (p.note.pitch.doubleUp) {
+          this.stopPlayingSampler(doubleUpPitchName(p.note.pitch));
+        }
+        p.note.pitch.playing = false;
       }
+    }
+
+    let targ = _playing.findIndex((p) => !p.note.pitch.playing);
+    while (targ > -1) {
+      _playing.splice(targ, 1);
+      targ = _playing.findIndex((p) => !p.note.pitch.playing);
     }
   }
 
@@ -455,35 +464,55 @@ export class Sequencer {
     toneConnect(sampleBank.mainOutput, node);
   }
 
-  async updatePlayingPitches(): Promise<void> {
+  async updatePlayingPitches(initial = false): Promise<void> {
     const planningToStop = _playing.filter(
-      (pl) => pl.subBeatsPlayed >= pl.endDueAfter - 2
+      (pl) => pl.subBeatsPlayed >= pl.endDueAfter
     );
 
     for (const playing of planningToStop) {
-      playing.note.pitch.shouldPlay = false;
-    }
-
-    let targ = _playing.findIndex((p) => !p.note.pitch.shouldPlay);
-    while (targ > -1) {
-      _playing.splice(targ, 1);
-      targ = _playing.findIndex((p) => !p.note.pitch.shouldPlay);
+      if (
+        !_playing.find(
+          (p) =>
+            p.note.pitch.samplerName === playing.note.pitch.samplerName &&
+            p.subBeatsPlayed < p.endDueAfter
+        )
+      ) {
+        playing.note.pitch.shouldPlay = false;
+        playing.fadingOut = true;
+      }
     }
 
     for (const pitch of Object.values(this.pitches)) {
       if (!pitch.shouldPlay && pitch.playing) {
         this.setFadeOutOnSampler(pitch.continuous, pitch.samplerName);
 
+        if (pitch.doubleDown) {
+          this.setFadeOutOnSampler(
+            pitch.continuous,
+            doubleDownPitchName(pitch)
+          );
+        }
+
         if (pitch.doubleUp) {
           this.setFadeOutOnSampler(pitch.continuous, doubleUpPitchName(pitch));
         }
+      }
+    }
 
-        pitch.fadingOut = true;
+    if (initial) {
+      const notesUnderCursor = _notes.filter(
+        (n) => n.startIndex <= this.cursor && n.stopIndex > this.cursor
+      );
+      for (const pitch of Object.values(this.pitches)) {
+        const noteIsUnderCursor = !!notesUnderCursor.find(
+          (n) => n.pitch.samplerName === pitch.samplerName
+        );
+        pitch.shouldPlay = noteIsUnderCursor;
       }
     }
   }
 
-  async startPitchesStartingNow(initial = false): Promise<void> {
+  async startPitchesStartingNow(): Promise<void> {
     const subBeatNotes = _notes.filter(
       (n) =>
         (n.startIndex === this.cursor && n.duration !== this._totalSubBeats) ||
@@ -496,6 +525,7 @@ export class Sequencer {
         endDueAfter: note.duration,
         note,
         subBeatsPlayed: 1,
+        fadingOut: false,
       });
 
       // if (note.pitch.doubleUp) {
@@ -508,33 +538,28 @@ export class Sequencer {
       // }
 
       const sampler = sampleBank.samplers[note.pitch.samplerName];
-      this.playSampler(note, sampler);
+      this.startSampler(note, sampler);
+
+      if (note.pitch.doubleDown) {
+        this.startSampler(
+          note,
+          sampleBank.samplers[doubleDownPitchName(note.pitch)]
+        );
+      }
 
       if (note.pitch.doubleUp) {
-        this.playSampler(
+        this.startSampler(
           note,
           sampleBank.samplers[doubleUpPitchName(note.pitch)]
         );
       }
     }
-
-    // if (initial) {
-    //   const notesUnderCursor = _notes.filter(
-    //     (n) => n.startIndex <= this.cursor && n.stopIndex > this.cursor
-    //   );
-    //   for (const pitch of Object.values(this.pitches)) {
-    //     const noteIsUnderCursor = !!notesUnderCursor.find(
-    //       (n) => n.pitch.samplerName === pitch.samplerName
-    //     );
-    //     pitch.shouldPlay = noteIsUnderCursor;
-    //   }
-    // }
   }
 
-  playSampler(note: Note, sampler: TonePlayer) {
+  startSampler(note: Note, sampler: TonePlayer) {
     if (note.pitch.continuous)
       sampler.set({
-        fadeIn: this.inSecs(0.2),
+        fadeIn: this.inSecs(0.4),
       });
     if (note.pitch.gain) {
       sampler.set({
@@ -547,9 +572,9 @@ export class Sequencer {
 
   setFadeOutOnSampler(continuous: boolean, samplerName: string) {
     const sampler = sampleBank.samplers[samplerName];
-    let fade = 0.1;
+    let fade = this.inSecs(0.1);
     if (continuous) {
-      fade = 0.6;
+      fade = this.inSecs(0.7);
     }
     sampler.set({
       fadeOut: fade,
@@ -569,6 +594,7 @@ export class Sequencer {
           p.note.pitch.loop = [];
         }
       p.note.pitch.shouldPlay = false;
+      p.fadingOut = true;
     }
 
     await this.updatePlayingPitches();
@@ -630,14 +656,16 @@ export class Sequencer {
 
   async onAudioContextStart() {
     this.playSilence(); // a hack to get iPads to allow sequenced sounds through
-    const reverb = new Reverb(2);
-    // const compressor = new Compressor(-0.1, 4);
-    const gain = new Gain(7, "decibels");
+    const reverb = new Reverb(1);
+    const compressor = new Compressor(-35);
+    const pregain = new Gain(2, "decibels");
+    const gain = new Gain(0, "decibels");
 
-    await this.connect(gain);
-    toneConnect(gain, reverb);
-    // toneConnect(gain, compressor);
-    reverb.toDestination();
+    await this.connect(pregain);
+    toneConnect(pregain, reverb);
+    toneConnect(pregain, compressor);
+    toneConnect(reverb, gain);
+    toneConnect(compressor, gain);
     gain.toDestination();
     // compressor.toDestination();
   }
